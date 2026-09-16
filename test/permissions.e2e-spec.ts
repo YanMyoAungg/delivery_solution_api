@@ -5,7 +5,7 @@ import { AppModule } from '../src/app.module.js';
 import { setupApp, setupSwagger } from '../src/setup-app.js';
 import { DatabaseService } from '../src/common/database/database.service.js';
 import { users } from '../src/users/user.schema.js';
-import { roles } from '../src/permissions/roles.schema.js';
+import { roles } from '../src/roles/roles.schema.js';
 import { hashPassword } from '../src/common/utils/password.util.js';
 import { eq } from 'drizzle-orm';
 
@@ -90,8 +90,12 @@ describe('Permissions & Roles (e2e)', () => {
 
       expect(response.body).toBeInstanceOf(Array);
       expect(response.body.length).toBeGreaterThan(0);
-      const domains = response.body.map((g: { domain: string }) => g.domain);
-      expect(domains).toContain('users');
+      const modules = response.body.map((g: { module: string }) => g.module);
+      expect(modules).toContain('users');
+      const permissionsGroup = response.body.find(
+        (g: { module: string }) => g.module === 'permissions',
+      );
+      expect(permissionsGroup.permissions).not.toContain('permissions.create');
     });
 
     it('forbids a RIDER (403)', async () => {
@@ -106,53 +110,6 @@ describe('Permissions & Roles (e2e)', () => {
     });
   });
 
-  describe('POST /api/v1/permissions (catalog CRUD)', () => {
-    let ownerToken: string;
-
-    beforeAll(async () => {
-      const email = `perm-cat-${run}@e2e.local`;
-      await insertUser('OWNER', email);
-      ownerToken = await login(email);
-    });
-
-    it('creates and lists a permission; duplicate → 409; delete granted → 409', async () => {
-      const name = `shops.${run}.manage`;
-      await request(app.getHttpServer())
-        .post('/api/v1/permissions')
-        .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ name })
-        .expect(201);
-
-      await request(app.getHttpServer())
-        .post('/api/v1/permissions')
-        .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ name })
-        .expect(409);
-
-      // grant it to OFFICER → delete must 409
-      await request(app.getHttpServer())
-        .put(`/api/v1/permissions/roles/${roleIds.OFFICER}`)
-        .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ permissions: ['users.read', name] })
-        .expect(200);
-      await request(app.getHttpServer())
-        .delete(`/api/v1/permissions/${encodeURIComponent(name)}`)
-        .set('Authorization', `Bearer ${ownerToken}`)
-        .expect(409);
-
-      // revoke then delete → 204
-      await request(app.getHttpServer())
-        .put(`/api/v1/permissions/roles/${roleIds.OFFICER}`)
-        .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ permissions: ['users.read'] })
-        .expect(200);
-      await request(app.getHttpServer())
-        .delete(`/api/v1/permissions/${encodeURIComponent(name)}`)
-        .set('Authorization', `Bearer ${ownerToken}`)
-        .expect(204);
-    });
-  });
-
   describe('GET /api/v1/permissions/roles/:roleId', () => {
     it('returns the granted keys for a role', async () => {
       const email = `perm-owner2-${run}@e2e.local`;
@@ -164,7 +121,7 @@ describe('Permissions & Roles (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      expect(response.body).toContain('users.list');
+      expect(response.body).toContain('users.read');
       expect(response.body).toContain('roles.create');
     });
   });
@@ -190,7 +147,7 @@ describe('Permissions & Roles (e2e)', () => {
       await request(app.getHttpServer())
         .put(`/api/v1/permissions/roles/${roleIds.OWNER}`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ permissions: ['users.list'] })
+        .send({ permissions: ['users.read'] })
         .expect(403);
     });
 
@@ -202,7 +159,7 @@ describe('Permissions & Roles (e2e)', () => {
       await request(app.getHttpServer())
         .put(`/api/v1/permissions/roles/${roleIds.ADMIN}`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ permissions: ['users.list'] })
+        .send({ permissions: ['users.read'] })
         .expect(403);
     });
 
@@ -226,7 +183,7 @@ describe('Permissions & Roles (e2e)', () => {
       await request(app.getHttpServer())
         .put(`/api/v1/permissions/roles/${roleIds.OWNER}`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ permissions: ['users.list'] })
+        .send({ permissions: ['users.read'] })
         .expect(403);
     });
 
@@ -238,7 +195,7 @@ describe('Permissions & Roles (e2e)', () => {
       await request(app.getHttpServer())
         .put(`/api/v1/permissions/roles/${roleIds.OFFICER}`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ permissions: ['shops.manage'] })
+        .send({ permissions: ['shops.notarealaction'] })
         .expect(404);
     });
 

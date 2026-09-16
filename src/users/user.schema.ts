@@ -7,7 +7,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { roles } from '../permissions/roles.schema.js';
+import { roles } from '../roles/roles.schema.js';
 
 export const USER_ROLES = ['OWNER', 'ADMIN', 'OFFICER', 'RIDER'] as const;
 export type UserRole = (typeof USER_ROLES)[number];

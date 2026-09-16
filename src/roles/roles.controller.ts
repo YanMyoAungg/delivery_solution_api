@@ -22,6 +22,10 @@ import type { AuthenticatedUser } from '../common/auth/auth.constants.js';
 import { RequirePermissions } from '../common/auth/permissions.decorator.js';
 import { RolesService } from './roles.service.js';
 import { RoleResponseDto } from './dto/roles-response.dto.js';
+import { CreateRoleDto } from './dto/create-role.dto.js';
+import { UpdateRoleDto } from './dto/update-role.dto.js';
+import { CreateRoleResponseDto } from './dto/create-role-response.dto.js';
+import { UpdateRoleResponseDto } from './dto/update-role-response.dto.js';
 
 @ApiTags('Roles')
 @ApiBearerAuth('access-token')
@@ -30,7 +34,7 @@ export class RolesController {
   constructor(private readonly roles: RolesService) {}
 
   @Get()
-  @RequirePermissions('roles.list')
+  @RequirePermissions('roles.read')
   @ApiOperation({ summary: 'List roles with user counts' })
   @ApiOkResponse({ type: [RoleResponseDto] })
   list(): Promise<RoleResponseDto[]> {
@@ -48,9 +52,9 @@ export class RolesController {
   @Post()
   @RequirePermissions('roles.create')
   @ApiOperation({ summary: 'Create a role' })
-  @ApiCreatedResponse({ description: 'Created role' })
+  @ApiCreatedResponse({ type: CreateRoleResponseDto })
   create(
-    @Body() body: { name: string; description?: string | null },
+    @Body() body: CreateRoleDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<{ id: string; name: string; isSystem: boolean }> {
     return this.roles.create(user.roleId, body);
@@ -59,10 +63,10 @@ export class RolesController {
   @Patch(':id')
   @RequirePermissions('roles.update')
   @ApiOperation({ summary: 'Edit a role description' })
-  @ApiOkResponse({ description: 'Updated role id' })
+  @ApiOkResponse({ type: UpdateRoleResponseDto })
   update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { description?: string | null },
+    @Body() body: UpdateRoleDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<{ id: string }> {
     return this.roles.update(user.roleId, id, body);

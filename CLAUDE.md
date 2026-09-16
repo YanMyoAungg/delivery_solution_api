@@ -30,6 +30,16 @@ Utility-only work (pure API/backend/config) → no frontend skill needed. If uns
 - `strict` is on in `tsconfig.json` — preserved for all new code. Use `satisfies` for const arrays constrained to a broader type.
 - Drizzle: `.$inferSelect`/`.$inferInsert` for row shapes, never loose `Record<string, unknown>` return types from services (resulting swagger clients are thin).
 
+## Docs & memory sync (mandatory)
+
+When a meaningful, durable change lands — API contract (endpoints, DTO shapes, response types), RBAC model, schema, conventions, or anything a fresh session would get wrong — update the files that describe it **in the same change**:
+
+- `CLAUDE.md` — conventions, architecture, migration gotchas.
+- `.claude/agents/*.md` — if an agent's instructions reference the changed behavior.
+- Persistent memory (`~/.claude/projects/.../memory/`) — non-obvious decisions/facts a later session can't derive from code or git history.
+
+Skip trivial edits (typos, formatting, one-off fixes). Test: *would a fresh session — or the frontend team — act on stale info because I didn't update it?* If yes, update.
+
 ## Naming conventions (mandatory)
 
 - **No abbreviations.** Full words: `permission`/`permissions`, not `p`/`perm`; `role` not `r`; `user` not `u`; `description` not `desc`. Single-letter names only for loop indexes / SQL aliases.
@@ -95,10 +105,10 @@ e2e requires `docker compose up -d` (Postgres publishes on host port from `DB_PO
 
 - **ESM `nodenext`**: relative imports MUST end in `.js` (`import { users } from '../../users/user.schema.js'`). Missing extension = tsc build error.
 - **Route guard** (from `src/common/auth/auth.guard.ts`): token's `sub` must match an active user; guard rebuilds the user from DB — don't keep stale copies of `req.user`.
-- **RBAC is dynamic** (spatie-style, three tables `roles`/`permissions`/`role_permissions` + `users.role_id`): OWNER/ADMIN manage roles, permission keys, and per-role grants from the API/UI — no code changes. `src/common/auth/permission-keys.ts` holds the 14 seeded keys (`PermissionKey` type) + `PERMISSION_KEYS` for auth autocomplete; **new keys are created at runtime**, do NOT hardcode more.
+- **RBAC is a fixed module×action catalog** (spatie-style, three tables `roles`/`permissions`/`role_permissions` + `users.role_id`): Owner/Admin assign, per role, which modules a role can create/read/update/delete/export/import (view≡read, edit≡update). The catalog is **seeded and read-only** — `src/common/auth/permission-keys.ts` is the single source of truth (`MODULE_ACTIONS` + exact `PermissionKey` union), 13 modules / 68 keys (users, shops, customers, riders, orders, pickups, deliveries, returns, payments, notifications each have 6 actions; roles has 4; permissions has read+update; reports has read+export). No runtime key creation — `POST /permissions` and `DELETE /permissions/:name` are removed; adding a module is a code change to `MODULE_ACTIONS` + re-seed.
   - `is_system` roles (OWNER) bypass grant rows entirely (shortcircuit in `PermissionService.getEffectivePermissions`) — never grant rows for OWNER.
   - Scope: caller can only grant a subset of its own effective permissions; no self-modification; ADMIN cannot touch OWNER/ADMIN. `@RequirePermissions('x.y')` **fails closed** for unknown keys.
-  - `permissions.name` format `domain.action` (lowercase); `roles.name` UPPER_CASE, immutable after create; delete-role blocked while `userCount > 0`, delete-key blocked while granted.
+  - `permissions.name` format `module.action` (lowercase); `module` is a stored column. `roles.name` UPPER_CASE, immutable after create; delete-role blocked while `userCount > 0`.
 - **Never expose `passwordHash`/`password_hash`** in any response; passwords hashed with bcrypt (`src/common/utils/password.util.ts`). Auth is access-token only; `POST /api/v1/auth/login` → JWT in `Authorization: Bearer`; route guards rebuild the user from DB — token `sub` must match an active user.
 - Controllers use `@Controller({ path: 'x', version: '1' })`.
 - OpenAPI is generated, not hand-written: response DTOs need correct `@Api*Response({ type })` or the frontend client (generated from `/api/v1/docs-json`) is wrong.

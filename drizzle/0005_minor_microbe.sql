@@ -1,0 +1,1 @@
+ALTER TABLE "permissions" ADD COLUMN "module" text NOT NULL;

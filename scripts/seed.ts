@@ -2,6 +2,11 @@ import { config } from 'dotenv';
 import postgres from 'postgres';
 import bcrypt from 'bcrypt';
 import { normalizeEmail } from '../src/common/utils/normalize.util.js';
+import {
+  MODULE_ACTIONS,
+  PERMISSION_KEYS,
+} from '../src/common/auth/permission-keys.js';
+import type { ModuleName } from '../src/common/auth/permission-keys.js';
 
 config({ path: ['.env.local', '.env'], quiet: true });
 
@@ -18,23 +23,12 @@ if (!databaseUrl) {
 
 const sql = postgres(databaseUrl);
 
-/** Default permission catalog seeded on first run (runtime-editable after). */
-const CATALOG = [
-  'users.create',
-  'users.list',
-  'users.read',
-  'users.update',
-  'users.delete',
-  'permissions.read',
-  'permissions.create',
-  'permissions.manage',
-  'permissions.delete',
-  'roles.create',
-  'roles.list',
-  'roles.read',
-  'roles.update',
-  'roles.delete',
-] as const;
+/** Fixed permission catalog — generated from MODULE_ACTIONS (read-only at runtime). */
+const CATALOG: Array<{ name: string; module: ModuleName }> = (
+  Object.entries(MODULE_ACTIONS) as [ModuleName, readonly string[]][]
+).flatMap(([module, actions]) =>
+  actions.map((action) => ({ name: `${module}.${action}`, module })),
+);
 
 /** Seed role set — closed union so lookups are typed, no undefined for known keys. */
 const SEED_ROLE_NAMES = ['OWNER', 'ADMIN', 'OFFICER', 'RIDER'] as const;
@@ -52,18 +46,18 @@ function roleIdRequired(
 
 /** seed grants: role name → keys (OWNER entries ignored — system role holds all). */
 const GRANTS: Record<Exclude<SeedRoleName, 'OWNER'>, string[]> = {
-  ADMIN: [...CATALOG],
+  ADMIN: [...PERMISSION_KEYS],
   OFFICER: ['users.read'],
   RIDER: [],
 };
 
 async function upsertPermissionNames(): Promise<Map<string, string>> {
   const ids = new Map<string, string>();
-  for (const name of CATALOG) {
+  for (const { name, module } of CATALOG) {
     const [row] = await sql<{ id: string }[]>`
-      insert into permissions (name, description)
-      values (${name}, ${name})
-      on conflict (name) do nothing
+      insert into permissions (name, module, description)
+      values (${name}, ${module}, ${name})
+      on conflict (name) do update set module = excluded.module
       returning id
     `;
     ids.set(name, row.id);

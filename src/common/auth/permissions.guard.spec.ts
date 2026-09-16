@@ -16,7 +16,6 @@ function makeContext(user: AuthenticatedUser | undefined) {
 describe('PermissionsGuard', () => {
   const reflector = { getAllAndOverride: vi.fn() };
   const queryRoles = { findFirst: vi.fn() };
-  const database = { db: { query: { roles: queryRoles } } };
   const permissionService = {
     getEffectivePermissions: vi.fn(),
   } as unknown as PermissionService;
@@ -31,7 +30,7 @@ describe('PermissionsGuard', () => {
     queryRoles.findFirst.mockResolvedValue({ name: 'ADMIN' });
     permissionService.getEffectivePermissions = vi
       .fn()
-      .mockResolvedValue(['users.list']);
+      .mockResolvedValue(['users.read']);
   });
 
   it('passes routes without permission metadata', async () => {
@@ -43,7 +42,7 @@ describe('PermissionsGuard', () => {
   });
 
   it('passes an admin for an admin-scoped permission', async () => {
-    reflector.getAllAndOverride.mockReturnValue(['users.list']);
+    reflector.getAllAndOverride.mockReturnValue(['users.read']);
 
     const result = await createGuard().canActivate(
       makeContext({
@@ -59,7 +58,7 @@ describe('PermissionsGuard', () => {
   });
 
   it('rejects an authenticated user lacking the required permission', async () => {
-    reflector.getAllAndOverride.mockReturnValue(['users.list']);
+    reflector.getAllAndOverride.mockReturnValue(['users.read']);
     queryRoles.findFirst.mockResolvedValue({ name: 'RIDER' });
     permissionService.getEffectivePermissions = vi.fn().mockResolvedValue([]);
 
@@ -77,7 +76,7 @@ describe('PermissionsGuard', () => {
   });
 
   it('rejects an unauthenticated request on a permission-protected route', async () => {
-    reflector.getAllAndOverride.mockReturnValue(['users.list']);
+    reflector.getAllAndOverride.mockReturnValue(['users.read']);
 
     await expect(
       createGuard().canActivate(makeContext(undefined)),
@@ -101,7 +100,7 @@ describe('PermissionsGuard', () => {
   });
 
   it('records permission metadata key usage', async () => {
-    reflector.getAllAndOverride.mockReturnValue(['users.list']);
+    reflector.getAllAndOverride.mockReturnValue(['users.read']);
 
     await createGuard().canActivate(
       makeContext({
