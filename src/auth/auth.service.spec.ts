@@ -44,7 +44,6 @@ describe('AuthService', () => {
     queryRoles.findFirst.mockResolvedValue({ name: 'OWNER' });
     permissionService.getEffectivePermissions.mockResolvedValue([
       'users.create',
-      'users.list',
       'users.read',
       'users.update',
       'permissions.read',

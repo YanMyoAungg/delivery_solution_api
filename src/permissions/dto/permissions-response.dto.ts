@@ -2,16 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class PermissionGroupDto {
   @ApiProperty({ example: 'users' })
-  domain: string;
+  module: string;
 
-  @ApiProperty({ type: [String], example: ['users.list', 'users.read'] })
+  @ApiProperty({ type: [String], example: ['users.create', 'users.read'] })
   permissions: string[];
-}
-
-export class CreatedPermissionDto {
-  @ApiProperty({ example: 'shops.manage' })
-  name: string;
-
-  @ApiProperty({ example: 'shops' })
-  domain: string;
 }

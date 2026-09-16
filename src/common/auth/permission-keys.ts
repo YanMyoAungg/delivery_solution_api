@@ -1,23 +1,41 @@
 /**
- * Registry of known permission keys. Keys may also be created at runtime via
- * the API (dynamic catalog), so the type admits any string; the const list
- * only gives autocomplete for the standard set.
+ * Fixed permission catalog — the single source of truth for every permission
+ * key the system knows. Each module maps to the actions its users can hold.
+ *
+ * The catalog is seeded (scripts/seed.ts) and read-only at runtime: no
+ * `permissions.create` / `permissions.delete` keys exist, and the API exposes
+ * no endpoint to mutate it. Adding a future module = add one entry here and
+ * re-seed (a code change, not a runtime action).
+ *
+ * View ≡ read, edit ≡ update — there is no separate "view"/"edit" action.
  */
-export const PERMISSION_KEYS = [
-  'users.create',
-  'users.list',
-  'users.read',
-  'users.update',
-  'users.delete',
-  'permissions.read',
-  'permissions.create',
-  'permissions.manage',
-  'permissions.delete',
-  'roles.create',
-  'roles.list',
-  'roles.read',
-  'roles.update',
-  'roles.delete',
-] as const;
+export const MODULE_ACTIONS = {
+  users: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  roles: ['create', 'read', 'update', 'delete'],
+  permissions: ['read', 'update'],
+  shops: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  customers: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  riders: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  orders: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  pickups: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  deliveries: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  returns: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  payments: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  notifications: ['create', 'read', 'update', 'delete', 'export', 'import'],
+  reports: ['read', 'export'],
+} as const satisfies Record<string, readonly string[]>;
 
-export type PermissionKey = (typeof PERMISSION_KEYS)[number] | (string & {});
+export type ModuleName = keyof typeof MODULE_ACTIONS;
+export type ActionName = (typeof MODULE_ACTIONS)[ModuleName][number];
+
+/** Exact `module.action` union — a literal string type, not `string`. */
+export type PermissionKey = {
+  [M in ModuleName]: `${M}.${(typeof MODULE_ACTIONS)[M][number]}`;
+}[ModuleName];
+
+/** Flat list of every known key, generated from the module map (stable order). */
+export const PERMISSION_KEYS: readonly PermissionKey[] = (
+  Object.entries(MODULE_ACTIONS) as [ModuleName, readonly string[]][]
+).flatMap(([module, actions]) =>
+  actions.map((action) => `${module}.${action}` as PermissionKey),
+);

@@ -1,15 +1,18 @@
 import {
+  BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
+import { isUniqueViolation } from '../common/database/is-unique-violation.js';
 import { PermissionService } from '../permissions/permissions.service.js';
-import { roles } from '../permissions/roles.schema.js';
+import { roles } from './roles.schema.js';
 import { users } from '../users/user.schema.js';
 import { RoleResponseDto } from './dto/roles-response.dto.js';
+import { CreateRoleDto } from './dto/create-role.dto.js';
+import { UpdateRoleDto } from './dto/update-role.dto.js';
 
 @Injectable()
 export class RolesService {
@@ -50,11 +53,11 @@ export class RolesService {
 
   async create(
     callerRoleId: string,
-    body: { name: string; description?: string | null },
+    body: CreateRoleDto,
   ): Promise<{ id: string; name: string; isSystem: boolean }> {
     const name = body.name.trim();
     if (!/^[A-Z][A-Z0-9_]{1,31}$/.test(name)) {
-      throw new ForbiddenException(
+      throw new BadRequestException(
         'Role name must be uppercase, 2-32 chars, letters/digits/underscore',
       );
     }
@@ -69,11 +72,7 @@ export class RolesService {
         });
       return row;
     } catch (err) {
-      const code =
-        (err as { code?: string }).code ??
-        (err as { cause?: { code?: string } }).cause?.code ??
-        '';
-      if (code === '23505') {
+      if (isUniqueViolation(err)) {
         throw new ConflictException(`Role '${name}' already exists`);
       }
       throw err;
@@ -84,7 +83,7 @@ export class RolesService {
   async update(
     callerRoleId: string,
     targetRoleId: string,
-    body: { description?: string | null },
+    body: UpdateRoleDto,
   ): Promise<{ id: string }> {
     const target = await this.roleOrThrow(targetRoleId);
     await this.permissions.assertCallerCanAssign(callerRoleId, target.id);

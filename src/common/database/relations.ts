@@ -1,8 +1,8 @@
 import { relations } from 'drizzle-orm';
 import { users } from '../../users/user.schema.js';
-import { roles } from '../../permissions/roles.schema.js';
+import { roles } from '../../roles/roles.schema.js';
 import { permissions } from '../../permissions/permissions.schema.js';
-import { role_permissions } from '../../permissions/role-permissions.schema.js';
+import { role_permissions } from '../../roles/role-permissions.schema.js';
 
 export const usersRelations = relations(users, ({ one }) => ({
   role: one(roles, {

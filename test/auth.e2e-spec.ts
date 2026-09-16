@@ -5,7 +5,7 @@ import { AppModule } from '../src/app.module.js';
 import { setupApp, setupSwagger } from '../src/setup-app.js';
 import { DatabaseService } from '../src/common/database/database.service.js';
 import { users } from '../src/users/user.schema.js';
-import { roles } from '../src/permissions/roles.schema.js';
+import { roles } from '../src/roles/roles.schema.js';
 import { hashPassword } from '../src/common/utils/password.util.js';
 import { eq } from 'drizzle-orm';
 
