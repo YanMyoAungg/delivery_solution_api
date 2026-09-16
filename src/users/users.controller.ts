@@ -36,7 +36,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @RequirePermissions('users.list')
+  @RequirePermissions('users.read')
   @ApiOperation({ summary: 'List users with search, filters and pagination' })
   @ApiOkResponse({ type: UserListResponseDto })
   list(@Query() query: ListUsersQueryDto): Promise<UserListResponseDto> {

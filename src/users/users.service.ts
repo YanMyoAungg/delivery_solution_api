@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
+import { isUniqueViolation } from '../common/database/is-unique-violation.js';
 import { hashPassword } from '../common/utils/password.util.js';
 import {
   normalizeEmail,
@@ -161,22 +162,13 @@ export class UsersService {
         .returning({ id: users.id });
       return this.getById(inserted[0].id);
     } catch (err) {
-      if (this.isUniqueViolation(err)) {
+      if (isUniqueViolation(err)) {
         throw new ConflictException(
           `User with email '${normalizeEmail(dto.email)}' already exists`,
         );
       }
       throw err;
     }
-  }
-
-  /** Detect a Postgres unique-constraint violation (SQLSTATE 23505). */
-  private isUniqueViolation(err: unknown): boolean {
-    const code =
-      (err as { code?: string }).code ??
-      (err as { cause?: { code?: string } }).cause?.code ??
-      '';
-    return code === '23505';
   }
 
   async update(
@@ -211,13 +203,16 @@ export class UsersService {
           ...(dto.phone !== undefined && { phone: dto.phone }),
           ...(dto.roleId !== undefined && { roleId: dto.roleId }),
           ...(dto.status !== undefined && { status: dto.status }),
-          ...(passwordHash !== undefined && { passwordHash }),
+          ...(passwordHash !== undefined && {
+            passwordHash,
+            passwordChangedAt: new Date(),
+          }),
           updatedAt: new Date(),
         })
         .where(eq(users.id, id));
       return this.getById(id);
     } catch (err) {
-      if (this.isUniqueViolation(err)) {
+      if (isUniqueViolation(err)) {
         throw new ConflictException(
           `User with email '${normalizeEmail(dto.email as string)}' already exists`,
         );
