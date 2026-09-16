@@ -1,0 +1,2 @@
+[2m$ tsx scripts/seed.ts[22m
+Seed skipped: OWNER already exists for owner@mail.com

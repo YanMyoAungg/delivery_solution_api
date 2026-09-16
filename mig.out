@@ -1,0 +1,29 @@
+[32m✓[39m Lockfile passes supply-chain policies (verified 10h ago)
+Lockfile is up to date, resolution step is skipped
+Already up to date
+
+Done in 329ms using pnpm v11.15.1
+[2m$ drizzle-kit migrate[22m
+[90mNo config path provided, using default 'drizzle.config.ts'[39m
+[90mReading config file '/Users/yanmyoaung/Desktop/personal/delivery_solution/d_api/drizzle.config.ts'[39m
+◇ injected env (0) from .env.local,.env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+[90mUsing 'postgres' driver for database querying[39m
+[⣷] applying migrations...{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42P06'[39m,
+  message: [32m'schema "drizzle" already exists, skipping'[39m,
+  file: [32m'schemacmds.c'[39m,
+  line: [32m'132'[39m,
+  routine: [32m'CreateSchemaCommand'[39m
+}
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42P07'[39m,
+  message: [32m'relation "__drizzle_migrations" already exists, skipping'[39m,
+  file: [32m'parse_utilcmd.c'[39m,
+  line: [32m'208'[39m,
+  routine: [32m'transformCreateStmt'[39m
+}
+[2K[1G[[32m✓[39m] migrations applied successfully!

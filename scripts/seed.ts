@@ -1,0 +1,174 @@
+import { config } from 'dotenv';
+import postgres from 'postgres';
+import bcrypt from 'bcrypt';
+import { normalizeEmail } from '../src/common/utils/normalize.util.js';
+
+config({ path: ['.env.local', '.env'], quiet: true });
+
+const OWNER_EMAIL = normalizeEmail(
+  process.env.SEED_OWNER_EMAIL ?? 'owner@mail.com',
+);
+const OWNER_PASSWORD = process.env.SEED_OWNER_PASSWORD ?? 'Password1234';
+const OWNER_NAME = process.env.SEED_OWNER_NAME ?? 'System Owner';
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL is required to seed.');
+}
+
+const sql = postgres(databaseUrl);
+
+/** Default permission catalog seeded on first run (runtime-editable after). */
+const CATALOG = [
+  'users.create',
+  'users.list',
+  'users.read',
+  'users.update',
+  'users.delete',
+  'permissions.read',
+  'permissions.create',
+  'permissions.manage',
+  'permissions.delete',
+  'roles.create',
+  'roles.list',
+  'roles.read',
+  'roles.update',
+  'roles.delete',
+] as const;
+
+/** Seed role set — closed union so lookups are typed, no undefined for known keys. */
+const SEED_ROLE_NAMES = ['OWNER', 'ADMIN', 'OFFICER', 'RIDER'] as const;
+type SeedRoleName = (typeof SEED_ROLE_NAMES)[number];
+
+/** Non-null role id lookup — roles are seeded just above, never missing. */
+function roleIdRequired(
+  roleIds: Map<SeedRoleName, string>,
+  roleName: SeedRoleName,
+): string {
+  const id = roleIds.get(roleName);
+  if (!id) throw new Error(`Role '${roleName}' was not seeded`);
+  return id;
+}
+
+/** seed grants: role name → keys (OWNER entries ignored — system role holds all). */
+const GRANTS: Record<Exclude<SeedRoleName, 'OWNER'>, string[]> = {
+  ADMIN: [...CATALOG],
+  OFFICER: ['users.read'],
+  RIDER: [],
+};
+
+async function upsertPermissionNames(): Promise<Map<string, string>> {
+  const ids = new Map<string, string>();
+  for (const name of CATALOG) {
+    const [row] = await sql<{ id: string }[]>`
+      insert into permissions (name, description)
+      values (${name}, ${name})
+      on conflict (name) do nothing
+      returning id
+    `;
+    ids.set(name, row.id);
+  }
+  return ids;
+}
+
+async function seedRoles() {
+  const roleIds = new Map<SeedRoleName, string>();
+  for (const roleName of SEED_ROLE_NAMES) {
+    const [row] = await sql<{ id: string }[]>`
+      insert into roles (name, description, is_system)
+      values (${roleName}, ${`${roleName} role`}, ${roleName === 'OWNER'})
+      on conflict (name) do update set is_system = excluded.is_system
+      returning id
+    `;
+    roleIds.set(roleName, row.id);
+  }
+  return roleIds;
+}
+
+async function seedGrants(
+  roleIds: Map<SeedRoleName, string>,
+  permIds: Map<string, string>,
+) {
+  // System role (OWNER) needs no grant rows — guard short-circuits to full catalog.
+  await sql`delete from role_permissions where role_id = ${roleIdRequired(roleIds, 'OWNER')}`;
+
+  for (const [role, keys] of Object.entries(GRANTS) as [
+    Exclude<SeedRoleName, 'OWNER'>,
+    string[],
+  ][]) {
+    const roleId = roleIdRequired(roleIds, role);
+    await sql`delete from role_permissions where role_id = ${roleId}`;
+    for (const key of keys) {
+      const permId = permIds.get(key);
+      if (!permId) continue;
+      await sql`
+        insert into role_permissions (role_id, permission_id)
+        values (${roleId}, ${permId})
+        on conflict (role_id, permission_id) do nothing
+      `;
+    }
+  }
+}
+
+async function main() {
+  const permIds = await upsertPermissionNames();
+  const roleIds = await seedRoles();
+  await seedGrants(roleIds, permIds);
+
+  // Backfill any user missing a role (created before the RBAC migration) to OFFICER.
+  await sql`
+    update users set role_id = r.id
+    from roles r
+    where users.role_id is null and r.name = 'OFFICER'
+  `;
+
+  const passwordHash = await bcrypt.hash(OWNER_PASSWORD, 10);
+
+  // Seed OWNER
+  const existingOwner = await sql<
+    { id: string }[]
+  >`select id from users where email = ${OWNER_EMAIL}`;
+  if (existingOwner.length === 0) {
+    await sql`
+      insert into users (name, email, password_hash, role_id, status)
+      values (${OWNER_NAME}, ${OWNER_EMAIL}, ${passwordHash}, ${roleIdRequired(roleIds, 'OWNER')}, 'ACTIVE')
+    `;
+    console.log(
+      `Seeded OWNER: ${OWNER_NAME} <${OWNER_EMAIL}> (default password: ${OWNER_PASSWORD})`,
+    );
+  } else {
+    console.log(`OWNER already exists for ${OWNER_EMAIL}, skipping`);
+  }
+
+  // Seed 2 admins
+  const admins = [
+    { name: 'Admin 1', email: 'admin1@mail.com' },
+    { name: 'Admin 2', email: 'admin2@mail.com' },
+  ];
+  for (const admin of admins) {
+    const normalized = normalizeEmail(admin.email);
+    const [existing] = await sql<
+      { id: string }[]
+    >`select id from users where email = ${normalized}`;
+    if (existing) {
+      console.log(`Admin ${normalized} already exists, skipping`);
+      continue;
+    }
+    await sql`
+      insert into users (name, email, password_hash, role_id, status)
+      values (${admin.name}, ${normalized}, ${passwordHash}, ${roleIdRequired(roleIds, 'ADMIN')}, 'ACTIVE')
+    `;
+    console.log(
+      `Seeded ADMIN: ${admin.name} <${normalized}> (default password: ${OWNER_PASSWORD})`,
+    );
+  }
+}
+
+main()
+  .catch((error) => {
+    console.error('Seed failed:', error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await sql.end();
+  });

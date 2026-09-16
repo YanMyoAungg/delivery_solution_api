@@ -1,0 +1,10 @@
+[2m$ vitest run --config ./vitest.config.e2e.ts[22m
+
+ RUN  v4.1.11 /Users/yanmyoaung/Desktop/personal/delivery_solution/d_api
+
+
+ Test Files  3 passed (3)
+      Tests  49 passed (49)
+   Start at  04:22:54
+   Duration  3.30s (transform 228ms, setup 0ms, import 1.71s, tests 4.32s, environment 0ms)
+
