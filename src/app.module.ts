@@ -10,6 +10,7 @@ import { HealthModule } from './common/health/health.module.js';
 import { JwtAuthGuard } from './common/auth/auth.guard.js';
 import { PermissionsGuard } from './common/auth/permissions.guard.js';
 import { envValidation } from './config/env.validation.js';
+import { ShopsModule } from './shops/shops.module.js';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { envValidation } from './config/env.validation.js';
     UsersModule,
     PermissionsModule,
     RolesModule,
+    ShopsModule,
   ],
   providers: [
     {

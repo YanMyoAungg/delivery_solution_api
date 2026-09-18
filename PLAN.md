@@ -4,11 +4,28 @@ What's next after Foundation + Phase 1 (Users/ Auth/ RBAC). Each phase lands aga
 
 Legend: ✅ done · phase-relative commit (migration + code + tests together).
 
+## Current Status
+
+- **Foundation:** COMPLETE
+- **Phase 1:** COMPLETE
+- **Permission catalog:** 13 modules / 68 fixed keys
+- **Phase 2:** NOT STARTED
+- **Next module:** Shops
+- **Then:** Customers → Riders → Orders
+
+Known project-state findings:
+
+- The implementation uses a fixed permission catalog from `src/common/auth/permission-keys.ts`; older runtime-permission wording remains in `README.md` and `docs/rbac-system.md` and is documentation debt.
+- The permission names below are historical proposals where they differ from the fixed catalog. Shops routes use the existing `shops.create`, `shops.read`, `shops.update`, and `shops.delete` keys.
+- Before Phase 2, lint, build, unit tests, and the existing e2e suite pass when e2e receives the required environment variables and seeded disposable database. The initial environment-free e2e invocation fails before startup because this checkout has no `.env`.
+- `pnpm-workspace.yaml` has the intended native build approvals for `esbuild` and `bcrypt`; only the file-ending normalization is incidental in the current worktree.
+- `RolesService.create()` does not currently use its caller role id for scope enforcement. Existing ADMIN/user-scope authorization behavior is preserved; no role-management change is part of Phase 2.
+
 ## Ground rules for every phase
 
 - Add a Drizzle migration via `pnpm db:generate` and verify `pnpm db:migrate` on a clean state before/after.
 - Re-export every new table from `src/common/database/schema.ts` or `db:generate` won't see it.
-- Every new protected route needs `@RequirePermissions(...)` **and** its roles entry in `src/common/auth/permissions.ts`. Proposed keys below — confirm against the real role needs before adding.
+- Every new protected route needs `@RequirePermissions(...)` and an existing fixed catalog key from `src/common/auth/permission-keys.ts`. Proposed keys below are historical planning notes and must be reconciled before use.
 - Business tables get `id uuid default gen_random_uuid()`, `created_at`/`updated_at` timestamptz (drizzle defaults), matching `users`.
 - Never expose `password_hash`; riders/users link via `users.id` (RIDER role), not copied credentials.
 

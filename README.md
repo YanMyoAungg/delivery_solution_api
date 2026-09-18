@@ -1,6 +1,23 @@
 # Delivery Management System — Backend API
 
-Backend for a delivery management application serving a single delivery company's operations: shops, customers, riders, orders, pickups, deliveries, returns, payments/COD, and scheduled notifications. This repository covers the **Foundation Phase** (application/API infrastructure, database layer, OpenAPI documentation, health check) and **Phase 1 — Users, Authentication & RBAC** (JWT auth, role-based access control, user management). Remaining business feature modules are introduced in later phases.
+Backend for a delivery management application serving a single delivery company's operations: shops, customers, riders, orders, pickups, deliveries, returns, payments/COD, and scheduled notifications. This repository covers the **Foundation Phase** (application/API infrastructure, database layer, OpenAPI documentation, health check) and **Phase 1 — Users, Authentication & RBAC** (JWT auth, role-based access control, user management). Phase 2 starts with the Shops module.
+
+## Current Development Status
+
+- **Foundation:** COMPLETE
+- **Phase 1:** COMPLETE
+- **Permission catalog:** 13 modules / 68 fixed keys
+- **Phase 2:** NOT STARTED
+- **Next module:** Shops
+- **Following modules:** Customers → Riders → Orders
+
+Known project-state findings:
+
+- `README.md` and `docs/rbac-system.md` contain older descriptions of runtime-created permissions; the implemented catalog is fixed and seeded from `src/common/auth/permission-keys.ts`.
+- `PLAN.md` still contains proposed permission names from the earlier design; Shops uses the fixed `shops.*` catalog keys.
+- The existing unit suite has 41 passing tests and the existing e2e suite has 48 passing tests when run with the required environment variables and seeded disposable database.
+- `RolesService.create()` accepts the caller role id but does not use it for a scope check. Existing role-management behavior is intentionally unchanged for Phase 2; current ADMIN/user-scope authorization tests pass.
+- `pnpm-workspace.yaml` contains the intended `allowBuilds` approval for `esbuild` and `bcrypt`; the working-tree difference also includes the final newline normalization. No dependency or framework change is required.
 
 ## Tech Stack
 
@@ -81,7 +98,7 @@ RBAC is **dynamic** (spatie-style: `roles`, `permissions`, `role_permissions`, `
 | `OFFICER`| Order/pickup/delivery operations |
 | `RIDER` | Delivery field worker (authenticated; no back-office administration) |
 
-Authorization runs through the global `PermissionsGuard` + `@RequirePermissions(...)` decorator; effective permissions come from the role's grant rows (system roles short-circuit to the full catalog). The 14 seeded keys live in `src/common/auth/permission-keys.ts` (`PERMISSION_KEYS`/`PermissionKey`); routes without `@RequirePermissions` allow any authenticated user. New permission keys are created at runtime, not hardcoded.
+Authorization runs through the global `PermissionsGuard` + `@RequirePermissions(...)` decorator; effective permissions come from the role's grant rows (system roles short-circuit to the full catalog). The fixed catalog lives in `src/common/auth/permission-keys.ts` (`PERMISSION_KEYS`/`PermissionKey`); routes without `@RequirePermissions` allow any authenticated user. New permission keys are code changes followed by re-seeding, not runtime-created records.
 
 ```text
 GET    /api/v1/users            # list users (search, filters, pagination)
@@ -173,7 +190,7 @@ src/
 
 - [x] **Foundation** — app/API infra, Drizzle pipeline, Swagger, health, Docker dev environment
 - [x] **Phase 1 — Users + Auth + RBAC** — JWT login, dynamic RBAC (roles/permissions/role_permissions), user CRUD, OWNER seed
-- [ ] Phase 2 — Master Data (shops, customers, riders)
+- [ ] **Phase 2 — Master Data (shops, customers, riders)** — NOT STARTED; next module: Shops, then Customers → Riders → Orders
 - [ ] Phase 3 — Orders core (state machine)
 - [ ] Phase 4 — Pickups
 - [ ] Phase 5 — Deliveries
