@@ -13,6 +13,7 @@ import { envValidation } from './config/env.validation.js';
 import { ShopsModule } from './shops/shops.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { RidersModule } from './riders/riders.module.js';
+import { OrdersModule } from './orders/orders.module.js';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { RidersModule } from './riders/riders.module.js';
     ShopsModule,
     CustomersModule,
     RidersModule,
+    OrdersModule,
   ],
   providers: [
     {
