@@ -8,6 +8,11 @@ import { DatabaseService } from '../common/database/database.service.js';
 import { orderStatusHistory } from './order-status-history.schema.js';
 import { orders, type OrderStatus } from './order.schema.js';
 
+type OrderStateExecutor = Pick<
+  typeof DatabaseService.prototype.db,
+  'update' | 'insert'
+>;
+
 /**
  * Allowed order-status transitions derived from the Phase 3 roadmap:
  * PENDING → PICKED_UP → RECEIVED_AT_OFFICE → ASSIGNED → OUT_FOR_DELIVERY
@@ -60,32 +65,40 @@ export class OrderStateService {
    */
   async applyTransition(params: ApplyTransitionParams): Promise<void> {
     this.assertTransition(params.fromStatus, params.toStatus);
-
     await this.database.db.transaction(async (tx) => {
-      const updated = await tx
-        .update(orders)
-        .set({ status: params.toStatus, updatedAt: new Date() })
-        .where(
-          and(
-            eq(orders.id, params.orderId),
-            eq(orders.status, params.fromStatus),
-          ),
-        )
-        .returning({ id: orders.id });
+      await this.applyTransitionInTransaction(tx, params);
+    });
+  }
 
-      if (updated.length === 0) {
-        throw new ConflictException(
-          `Order '${params.orderId}' is not in status '${params.fromStatus}'`,
-        );
-      }
+  async applyTransitionInTransaction(
+    tx: OrderStateExecutor,
+    params: ApplyTransitionParams,
+  ): Promise<void> {
+    this.assertTransition(params.fromStatus, params.toStatus);
 
-      await tx.insert(orderStatusHistory).values({
-        orderId: params.orderId,
-        fromStatus: params.fromStatus,
-        toStatus: params.toStatus,
-        changedBy: params.changedBy,
-        note: params.note ?? null,
-      });
+    const updated = await tx
+      .update(orders)
+      .set({ status: params.toStatus, updatedAt: new Date() })
+      .where(
+        and(
+          eq(orders.id, params.orderId),
+          eq(orders.status, params.fromStatus),
+        ),
+      )
+      .returning({ id: orders.id });
+
+    if (updated.length === 0) {
+      throw new ConflictException(
+        `Order '${params.orderId}' is not in status '${params.fromStatus}'`,
+      );
+    }
+
+    await tx.insert(orderStatusHistory).values({
+      orderId: params.orderId,
+      fromStatus: params.fromStatus,
+      toStatus: params.toStatus,
+      changedBy: params.changedBy,
+      note: params.note ?? null,
     });
   }
 }

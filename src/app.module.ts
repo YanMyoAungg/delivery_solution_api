@@ -14,6 +14,8 @@ import { ShopsModule } from './shops/shops.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { RidersModule } from './riders/riders.module.js';
 import { OrdersModule } from './orders/orders.module.js';
+import { PickupsModule } from './pickups/pickups.module.js';
+import { DeliveriesModule } from './deliveries/deliveries.module.js';
 
 @Module({
   imports: [
@@ -33,6 +35,8 @@ import { OrdersModule } from './orders/orders.module.js';
     CustomersModule,
     RidersModule,
     OrdersModule,
+    PickupsModule,
+    DeliveriesModule,
   ],
   providers: [
     {

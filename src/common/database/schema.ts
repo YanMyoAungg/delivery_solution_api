@@ -8,4 +8,6 @@ export * from '../../customers/customer.schema.js';
 export * from '../../riders/rider.schema.js';
 export * from '../../orders/order.schema.js';
 export * from '../../orders/order-status-history.schema.js';
+export * from '../../pickups/pickup.schema.js';
+export * from '../../deliveries/delivery.schema.js';
 export * from './relations.js';
