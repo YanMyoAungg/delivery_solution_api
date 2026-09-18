@@ -10,6 +10,12 @@ import { HealthModule } from './common/health/health.module.js';
 import { JwtAuthGuard } from './common/auth/auth.guard.js';
 import { PermissionsGuard } from './common/auth/permissions.guard.js';
 import { envValidation } from './config/env.validation.js';
+import { ShopsModule } from './shops/shops.module.js';
+import { CustomersModule } from './customers/customers.module.js';
+import { RidersModule } from './riders/riders.module.js';
+import { OrdersModule } from './orders/orders.module.js';
+import { PickupsModule } from './pickups/pickups.module.js';
+import { DeliveriesModule } from './deliveries/deliveries.module.js';
 
 @Module({
   imports: [
@@ -25,6 +31,12 @@ import { envValidation } from './config/env.validation.js';
     UsersModule,
     PermissionsModule,
     RolesModule,
+    ShopsModule,
+    CustomersModule,
+    RidersModule,
+    OrdersModule,
+    PickupsModule,
+    DeliveriesModule,
   ],
   providers: [
     {

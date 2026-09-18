@@ -8,10 +8,25 @@ import { users } from '../src/users/user.schema.js';
 import { roles } from '../src/roles/roles.schema.js';
 import { hashPassword } from '../src/common/utils/password.util.js';
 import { eq } from 'drizzle-orm';
+import { PermissionService } from '../src/permissions/permissions.service.js';
+import type { PermissionKey } from '../src/common/auth/permission-keys.js';
+
+const ORIGINAL_OPERATIONAL_GRANTS = {
+  OFFICER: [
+    'pickups.create',
+    'pickups.read',
+    'pickups.update',
+    'deliveries.create',
+    'deliveries.read',
+    'deliveries.update',
+  ],
+  RIDER: ['deliveries.read', 'deliveries.update'],
+} as const;
 
 describe('Permissions & Roles (e2e)', () => {
   let app: INestApplication;
   let database: DatabaseService;
+  let permissionService: PermissionService | undefined;
   const cleanupIds: string[] = [];
   const roleIds: Record<string, string> = {};
 
@@ -50,6 +65,22 @@ describe('Permissions & Roles (e2e)', () => {
     return response.body.accessToken as string;
   }
 
+  async function restoreOperationalGrants(): Promise<void> {
+    if (
+      !permissionService ||
+      !roleIds.OWNER ||
+      !roleIds.OFFICER ||
+      !roleIds.RIDER
+    ) {
+      return;
+    }
+    for (const roleName of ['OFFICER', 'RIDER'] as const) {
+      await permissionService.setRoleGrants(roleIds.OWNER, roleIds[roleName], [
+        ...ORIGINAL_OPERATIONAL_GRANTS[roleName],
+      ] as PermissionKey[]);
+    }
+  }
+
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -60,6 +91,7 @@ describe('Permissions & Roles (e2e)', () => {
     setupSwagger(app);
     await app.init();
     database = app.get(DatabaseService);
+    permissionService = app.get(PermissionService);
 
     for (const name of ['OWNER', 'ADMIN', 'OFFICER', 'RIDER']) {
       roleIds[name] = await getRoleId(name);
@@ -67,6 +99,7 @@ describe('Permissions & Roles (e2e)', () => {
   });
 
   afterAll(async () => {
+    await restoreOperationalGrants();
     for (const id of cleanupIds) {
       await database.db.delete(users).where(eq(users.id, id));
     }
@@ -127,6 +160,10 @@ describe('Permissions & Roles (e2e)', () => {
   });
 
   describe('PUT /api/v1/permissions/roles/:roleId', () => {
+    afterEach(async () => {
+      await restoreOperationalGrants();
+    });
+
     it('lets an OWNER replace OFFICER grants', async () => {
       const email = `perm-owner3-${run}@e2e.local`;
       await insertUser('OWNER', email);
