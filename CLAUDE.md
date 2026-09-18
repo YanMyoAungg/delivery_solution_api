@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-NestJS 12 (Express) + TypeScript API for a single delivery company's operations: shops, customers, riders, orders, pickups, deliveries, returns, payments/COD, notifications. Postgres 18/Drizzle ORM, Redis (future jobs), Swagger, Vitest. Single package, pnpm workspaces, ESM under `nodenext`. Nothing committed yet — only commit/push when the user explicitly asks.
+NestJS 12 (Express) + TypeScript API for a single delivery company's operations: shops, customers, riders, orders, pickups, deliveries, returns, payments/COD, notifications. Postgres 18/Drizzle ORM, Redis (future jobs), Swagger, Vitest. Single package, pnpm workspaces, ESM under `nodenext`. Only commit/push when the user explicitly asks.
 
-Phase status (roadmap in `README.md` / `PLAN.md`): Foundation ✅, Phase 1 (Users/Auth/RBAC) ✅. Phases 2–8 (shops/customers/riders → orders → pickups → deliveries → returns/COD → notifications → reports) land as `src/<domain>/` modules.
+Phase status (roadmap in `README.md` / `PLAN.md`): Foundation ✅, Phase 1 (Users/Auth/RBAC) ✅, Phases 2–5 (master data → orders → pickups → deliveries) ✅. Phase 6 (returns/COD/reconciliation) is domain-preflight blocked; notifications and reports remain later phases.
 
 ## Skills — invoke before task-specific code
 

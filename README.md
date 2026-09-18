@@ -1,21 +1,29 @@
 # Delivery Management System — Backend API
 
-Backend for a delivery management application serving a single delivery company's operations: shops, customers, riders, orders, pickups, deliveries, returns, payments/COD, and scheduled notifications. This repository covers the **Foundation Phase** (application/API infrastructure, database layer, OpenAPI documentation, health check) and **Phase 1 — Users, Authentication & RBAC** (JWT auth, role-based access control, user management). Phase 2 starts with the Shops module.
+Backend for a delivery management application serving a single delivery company's operations: shops, customers, riders, orders, pickups, deliveries, returns, payments/COD, and scheduled notifications. This repository covers the **Foundation Phase**, **Phase 1 — Users, Authentication & RBAC**, **Phase 2 — Master Data**, **Phase 3 — Orders Core**, **Phase 4 — Pickups**, and **Phase 5 — Delivery Operations**. Returns + Payment Reconciliation remains blocked at domain preflight.
 
 ## Current Development Status
 
 - **Foundation:** COMPLETE
 - **Phase 1:** COMPLETE
 - **Permission catalog:** 13 modules / 68 fixed keys
-- **Phase 2:** NOT STARTED
-- **Next module:** Shops
-- **Following modules:** Customers → Riders → Orders
+- **Phase 2 — Master Data:** COMPLETE
+- **Phase 3 — Orders Core:** COMPLETE
+- **Phase 4 — Pickups:** COMPLETE
+- **Phase 5 — Delivery Operations:** COMPLETE
+- **Phase 6 — Returns + Payment Reconciliation:** DOMAIN PREFLIGHT BLOCKED; implementation not authorized
+- **Next authorized activity:** approve the Returns/Payment/Reconciliation domain decisions and ADR; do not implement before approval
 
 Known project-state findings:
 
 - `README.md` and `docs/rbac-system.md` contain older descriptions of runtime-created permissions; the implemented catalog is fixed and seeded from `src/common/auth/permission-keys.ts`.
 - `PLAN.md` still contains proposed permission names from the earlier design; Shops uses the fixed `shops.*` catalog keys.
-- The existing unit suite has 41 passing tests and the existing e2e suite has 48 passing tests when run with the required environment variables and seeded disposable database.
+- `docs/rbac-system.md` is retained as a historical RBAC design record and is not authoritative for the implemented fixed catalog.
+- Returns + Payment Reconciliation has no approved table, service, route, DTO, history model, payment ledger, reconciliation model, or implementation authority.
+- The existing `OUT_FOR_DELIVERY -> RETURNED` order-state edge remains in `OrderStateService`, but no approved Returns workflow invokes it.
+- Delivery attempts are limited to three; the third failure leaves the order `FAILED`, retry is rejected, and there is no automatic return.
+- The Phase 6 planning notes are proposals only until the listed return, payment, reconciliation, and permission decisions are explicitly approved.
+- The current unit suite has 72 passing tests and the current e2e suite has 66 passing tests when run with the required environment variables and seeded disposable database.
 - `RolesService.create()` accepts the caller role id but does not use it for a scope check. Existing role-management behavior is intentionally unchanged for Phase 2; current ADMIN/user-scope authorization tests pass.
 - `pnpm-workspace.yaml` contains the intended `allowBuilds` approval for `esbuild` and `bcrypt`; the working-tree difference also includes the final newline normalization. No dependency or framework change is required.
 
@@ -89,7 +97,7 @@ GET  /api/v1/auth/me               # current user profile
 POST /api/v1/auth/change-password  # rotate the current user's password
 ```
 
-RBAC is **dynamic** (spatie-style: `roles`, `permissions`, `role_permissions`, `users.role_id`). OWNER/ADMIN create/edit/delete roles and permission keys, and per-role grants, from the API/UI — no code changes. Seeded roles:
+RBAC uses a fixed, seeded module/action catalog with dynamic role grants (`roles`, `permissions`, `role_permissions`, `users.role_id`). OWNER/ADMIN manage role grants, but permission keys are code-defined and read-only at runtime. Seeded roles:
 
 | Role    | Scope |
 |---------|-------|
@@ -189,11 +197,11 @@ src/
 ## Phase Roadmap
 
 - [x] **Foundation** — app/API infra, Drizzle pipeline, Swagger, health, Docker dev environment
-- [x] **Phase 1 — Users + Auth + RBAC** — JWT login, dynamic RBAC (roles/permissions/role_permissions), user CRUD, OWNER seed
-- [ ] **Phase 2 — Master Data (shops, customers, riders)** — NOT STARTED; next module: Shops, then Customers → Riders → Orders
-- [ ] Phase 3 — Orders core (state machine)
-- [ ] Phase 4 — Pickups
-- [ ] Phase 5 — Deliveries
+- [x] **Phase 1 — Users + Auth + RBAC** — JWT login, fixed permission catalog with dynamic role grants, user CRUD, OWNER seed
+- [x] **Phase 2 — Master Data (shops, customers, riders)**
+- [x] Phase 3 — Orders core (state machine)
+- [x] Phase 4 — Pickups
+- [x] Phase 5 — Deliveries
 - [ ] Phase 6 — Returns + payment reconciliation
 - [ ] Phase 7 — Notifications + Viber
 - [ ] Phase 8 — Reports
