@@ -11,6 +11,7 @@ import { JwtAuthGuard } from './common/auth/auth.guard.js';
 import { PermissionsGuard } from './common/auth/permissions.guard.js';
 import { envValidation } from './config/env.validation.js';
 import { ShopsModule } from './shops/shops.module.js';
+import { CustomersModule } from './customers/customers.module.js';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ShopsModule } from './shops/shops.module.js';
     PermissionsModule,
     RolesModule,
     ShopsModule,
+    CustomersModule,
   ],
   providers: [
     {
