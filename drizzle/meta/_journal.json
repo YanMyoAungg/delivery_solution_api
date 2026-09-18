@@ -57,6 +57,13 @@
       "when": 1789706717796,
       "tag": "0007_cool_mongu",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789707304505,
+      "tag": "0008_acoustic_agent_brand",
+      "breakpoints": true
     }
   ]
 }
