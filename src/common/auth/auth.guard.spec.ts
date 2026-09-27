@@ -118,6 +118,88 @@ describe('JwtAuthGuard', () => {
     expect(result).toBe(true);
   });
 
+  it('accepts a token issued after the password change within the same second', async () => {
+    reflector.getAllAndOverride.mockReturnValue(undefined);
+    const issuedAt = 1000;
+    jwt.verifyAsync.mockResolvedValue({
+      sub: '33333333-3333-4333-8333-333333333333',
+      email: 'owner@mail.com',
+      role: 'OWNER',
+      iat: issuedAt,
+      // 600ms into the second; the password changed 100ms before that.
+      tokenIssuedAtMs: issuedAt * 1000 + 600,
+    });
+    queryUsers.findFirst.mockResolvedValue({
+      id: '33333333-3333-4333-8333-333333333333',
+      name: 'Owner',
+      email: 'owner@mail.com',
+      role: 'OWNER',
+      status: 'ACTIVE',
+      passwordChangedAt: new Date(issuedAt * 1000 + 500),
+    });
+
+    const result = await createGuard().canActivate(
+      makeContext({ headers: { authorization: 'Bearer valid.token' } }),
+    );
+
+    expect(result).toBe(true);
+  });
+
+  it('rejects a token issued before the password change within the same second', async () => {
+    reflector.getAllAndOverride.mockReturnValue(undefined);
+    const issuedAt = 1000;
+    jwt.verifyAsync.mockResolvedValue({
+      sub: '33333333-3333-4333-8333-333333333333',
+      email: 'owner@mail.com',
+      role: 'OWNER',
+      iat: issuedAt,
+      // 100ms into the second; the password changed 400ms later. Both floor to
+      // the same `iat`, so only the millisecond stamp can tell them apart.
+      tokenIssuedAtMs: issuedAt * 1000 + 100,
+    });
+    queryUsers.findFirst.mockResolvedValue({
+      id: '33333333-3333-4333-8333-333333333333',
+      name: 'Owner',
+      email: 'owner@mail.com',
+      role: 'OWNER',
+      status: 'ACTIVE',
+      passwordChangedAt: new Date(issuedAt * 1000 + 500),
+    });
+
+    await expect(
+      createGuard().canActivate(
+        makeContext({ headers: { authorization: 'Bearer valid.token' } }),
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('falls back to whole-second comparison for tokens without a millisecond stamp', async () => {
+    reflector.getAllAndOverride.mockReturnValue(undefined);
+    const issuedAt = 1000;
+    jwt.verifyAsync.mockResolvedValue({
+      sub: '33333333-3333-4333-8333-333333333333',
+      email: 'owner@mail.com',
+      role: 'OWNER',
+      iat: issuedAt,
+      // No `tokenIssuedAtMs` — a token minted before the claim was introduced.
+    });
+    queryUsers.findFirst.mockResolvedValue({
+      id: '33333333-3333-4333-8333-333333333333',
+      name: 'Owner',
+      email: 'owner@mail.com',
+      role: 'OWNER',
+      status: 'ACTIVE',
+      // 500ms into the same second: floors to `iat`, so it is accepted.
+      passwordChangedAt: new Date(issuedAt * 1000 + 500),
+    });
+
+    const result = await createGuard().canActivate(
+      makeContext({ headers: { authorization: 'Bearer valid.token' } }),
+    );
+
+    expect(result).toBe(true);
+  });
+
   it('rejects a valid token for a missing or deactivated user', async () => {
     reflector.getAllAndOverride.mockReturnValue(undefined);
     jwt.verifyAsync.mockResolvedValue({

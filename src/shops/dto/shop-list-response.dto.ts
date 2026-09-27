@@ -1,10 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserResponseDto } from './user-response.dto.js';
+import { ShopResponseDto } from './shop-response.dto.js';
 import { PaginationMetaDto } from '../../common/dto/pagination-meta.dto.js';
 
-export class UserListResponseDto {
-  @ApiProperty({ type: UserResponseDto, isArray: true })
-  data: UserResponseDto[];
+export class ShopListResponseDto {
+  @ApiProperty({ type: ShopResponseDto, isArray: true })
+  data: ShopResponseDto[];
 
   @ApiProperty({ type: PaginationMetaDto })
   meta: PaginationMetaDto;

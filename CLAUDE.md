@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NestJS 12 (Express) + TypeScript API for a single delivery company's operations: shops, customers, riders, orders, pickups, deliveries, returns, payments/COD, notifications. Postgres 18/Drizzle ORM, Redis (future jobs), Swagger, Vitest. Single package, pnpm workspaces, ESM under `nodenext`. Nothing committed yet — only commit/push when the user explicitly asks.
 
-Phase status (roadmap in `README.md` / `PLAN.md`): Foundation ✅, Phase 1 (Users/Auth/RBAC) ✅. Phases 2–8 (shops/customers/riders → orders → pickups → deliveries → returns/COD → notifications → reports) land as `src/<domain>/` modules.
+Phase status (roadmap in `README.md` / `PLAN.md`): Foundation ✅, Phase 1 (Users/Auth/RBAC) ✅, Phase 2 (Master Data: shops/customers/riders) ✅. Phases 3–8 (orders → pickups → deliveries → returns/COD → notifications → reports) land as `src/<domain>/` modules.
 
 ## Skills — invoke before task-specific code
 
@@ -85,6 +85,11 @@ pnpm db:reset      # DROP ALL → migrate → seed (clean slate)
 
 e2e requires `docker compose up -d` (Postgres publishes on host port from `DB_PORT`); it writes to the shared dev DB and cleans up — never run e2e against a DB you care about. e2e uses unique emails (`${name}-${Date.now()}@e2e.local`) so parallel runs don't collide.
 
+**Two e2e gotchas that cost real debugging time:**
+
+- `vitest.config.e2e.ts` sets `fileParallelism: false`, and it must stay that way. Every spec file shares one Postgres database, and `test/permissions.e2e-spec.ts` **rewrites RBAC grant rows** via `PUT /permissions/roles/:roleId`. Run in parallel, specs race on that global state and unrelated suites fail with spurious 403s. That spec snapshots the grants in `beforeAll` and restores them in `afterAll` for the same reason — keep both halves if you touch it.
+- Supertest helpers must be **sync** factory functions (no `async`) when the call is chained: `async function createShop()` returns a `Promise<Test>`, so `createShop(...).expect(201)` dies with `expect is not a function`. Use `async` only where the value is genuinely awaited, and never destructure — `login()` returns a bare token `string`, so `const { accessToken } = await login(...)` silently yields `undefined` and every request 401s.
+
 ## Environment (easy to get wrong)
 
 - `.env` (gitignored) intentionally differs from `.env.example`: local Postgres publishes on host port **5433**, the example uses **5432**. Never overwrite `.env` from `.env.example`. If local Postgres already uses 5432, set `DB_PORT`/`DATABASE_URL` to 5433 in `.env`.
@@ -99,12 +104,23 @@ e2e requires `docker compose up -d` (Postgres publishes on host port from `DB_PO
   - `database/` — global Drizzle/Postgres `DatabaseService`; `schema.ts` is the central re-export point and the ONLY schema imports `db:generate` sees.
   - `auth/` — global guards, decorators (`@Public()`, `@RequirePermissions()`, `@CurrentUser()`), and `permissions.ts` (permission→roles matrix).
   - `health/` — public probe (`GET /api/v1/health`).
-- **Feature modules** (`src/auth/`, `src/users/`, future `src/shops/` etc.) each own controller/service/DTOs + a `*.schema.ts` + a `*.module.ts`.
+- **Feature modules** (`src/auth/`, `src/users/`, `src/shops/`, `src/customers/`, `src/riders/`) each own controller/service/DTOs + a `*.schema.ts` + a `*.module.ts`.
+
+## Master data (Phase 2 — shops / customers / riders)
+
+- All three follow one shape: list (search + pagination; shops also filter `channelType`, riders also filter `isAvailable`), create, get, patch, delete. Shared `PaginationMetaDto` lives in `src/common/dto/`.
+- **`shops`** — `channelType` (`VIBER|TELEGRAM`) + `channelName` required; nullable `chatId` is **never in a DTO** (the Phase 7 channel bot writes it). Name is unique → 409 via `isUniqueViolation`; also tests `escapeLikeWildcards` on search.
+- **`customers`** — flat, **no unique constraints** (duplicate names are legal and asserted in e2e); no shop FK — customer↔shop association happens on orders in Phase 3.
+- **`riders`** — `user_id` is BOTH the PK and the FK→`users.id` (`ON DELETE cascade`), which is what enforces the 1:1. `:id` in the URL is the `users.id`. Create/update/delete run in a `db.transaction` touching `users` + `riders` together; the RIDER role id is resolved by name at runtime (missing → NotFoundException telling you to seed).
+- **Riders PATCH is deliberately a combined DTO** (rider profile + user `name`/`phone`/`status`): OFFICER has `riders.update` but not `users.update`, so splitting would make the user half of the aggregate unreachable to them. Email/password/role stay ADMIN-only via `/api/v1/users`; `forbidNonWhitelisted` turns them into a 400 here.
+- Riders list joins `users` for search — the `where` must be **identical** in the rows query and the count query or `total` drifts from the returned page.
+- OFFICER grants on all three: create + read + update, **never delete** (delete → 403).
 
 ## Conventions that differ from Nest defaults
 
 - **ESM `nodenext`**: relative imports MUST end in `.js` (`import { users } from '../../users/user.schema.js'`). Missing extension = tsc build error.
 - **Route guard** (from `src/common/auth/auth.guard.ts`): token's `sub` must match an active user; guard rebuilds the user from DB — don't keep stale copies of `req.user`.
+- **Token revocation clocks**: the guard rejects a token minted before `users.password_changed_at`. That column keeps **milliseconds** but the JWT `iat` claim keeps **whole seconds**, so comparing them directly is unreliable — a token minted 600 ms *after* a password change and one minted 600 ms *before* floor to the same `iat` and are indistinguishable. Tokens therefore carry a `tokenIssuedAtMs` claim (stamped in `AuthService.login`); the guard prefers it and only falls back to a floored second comparison for tokens predating the claim. Don't "simplify" this back to `iat`. Same class of bug hits any new timestamp-vs-`iat` check.
 - **RBAC is a fixed module×action catalog** (spatie-style, three tables `roles`/`permissions`/`role_permissions` + `users.role_id`): Owner/Admin assign, per role, which modules a role can create/read/update/delete/export/import (view≡read, edit≡update). The catalog is **seeded and read-only** — `src/common/auth/permission-keys.ts` is the single source of truth (`MODULE_ACTIONS` + exact `PermissionKey` union), 13 modules / 68 keys (users, shops, customers, riders, orders, pickups, deliveries, returns, payments, notifications each have 6 actions; roles has 4; permissions has read+update; reports has read+export). No runtime key creation — `POST /permissions` and `DELETE /permissions/:name` are removed; adding a module is a code change to `MODULE_ACTIONS` + re-seed.
   - `is_system` roles (OWNER) bypass grant rows entirely (shortcircuit in `PermissionService.getEffectivePermissions`) — never grant rows for OWNER.
   - Scope: caller can only grant a subset of its own effective permissions; no self-modification; ADMIN cannot touch OWNER/ADMIN. `@RequirePermissions('x.y')` **fails closed** for unknown keys.

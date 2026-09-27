@@ -8,22 +8,24 @@ Legend: ✅ done · phase-relative commit (migration + code + tests together).
 
 - Add a Drizzle migration via `pnpm db:generate` and verify `pnpm db:migrate` on a clean state before/after.
 - Re-export every new table from `src/common/database/schema.ts` or `db:generate` won't see it.
-- Every new protected route needs `@RequirePermissions(...)` **and** its roles entry in `src/common/auth/permissions.ts`. Proposed keys below — confirm against the real role needs before adding.
+- Every new protected route needs `@RequirePermissions(...)` with a key from the seeded catalog (`src/common/auth/permission-keys.ts`). Add the module to `MODULE_ACTIONS` before writing the controller if it is new, then re-seed; grants are per-role rows, not a hardcoded matrix.
 - Business tables get `id uuid default gen_random_uuid()`, `created_at`/`updated_at` timestamptz (drizzle defaults), matching `users`.
 - Never expose `password_hash`; riders/users link via `users.id` (RIDER role), not copied credentials.
 
 ---
 
-## Phase 2 — Master Data (shops, customers, riders)
+## Phase 2 — Master Data (shops, customers, riders) ✅
 
-Reference data for everything downstream.
+**Landed.** Reference data for everything downstream.
 
-- **Tables**: `shops`, `customers` (standalone, not auth users), `riders` (1:1 with `users` where `role='RIDER'`).
-- **Endpoints** (CRUD + list/search/filter):
-  - `/api/v1/shops`, `/api/v1/customers` — OWNER/ADMIN/OFFICER.
-  - `/api/v1/riders` — OWNER/ADMIN manage; create rider = create `users` row (`RIDER`) + `riders` row in one transaction.
-- **Permissions to add**: `shops.manage|view`, `customers.manage|view`, `riders.manage|view`.
-- **Tests**: CRUD + list e2e; rider creation keeps a single source of truth (users) for auth.
+- **Tables**: `shops` (name unique, `channel_type` enum `VIBER|TELEGRAM`, `channel_name` required, nullable `chat_id` kept out of every DTO — the Phase 7 bot webhook captures it); `customers` (flat: name/phone/address/notes, **no unique constraints** — duplicate names are legal, no shop FK, customer↔shop association happens on orders in Phase 3); `riders` (`user_id` uuid **PK** FK→`users.id` `ON DELETE cascade`, which enforces the 1:1; profile = license/vehicle/plate/NRC/emergency contact/availability/notes).
+- **Endpoints** — five routes each on `/api/v1/shops`, `/api/v1/customers`, `/api/v1/riders`. `:id` is the row id except for riders, where it is the backing `users.id`.
+- **Permissions**: no catalog change needed — the fixed `MODULE_ACTIONS` catalog already had shops/customers/riders × 6 actions, so the seed generates them. **OFFICER gets create + read + update on all three, never delete**; ADMIN all 68; OWNER bypasses.
+- **Decisions worth remembering**:
+  - Riders `PATCH` is a **combined DTO** (rider profile + user `name`/`phone`/`status`) because OFFICER holds `riders.update` but **not** `users.update` — the 1:1 aggregate stays reachable under one permission. Email/password/role stay ADMIN-only through `/api/v1/users` (and `forbidNonWhitelisted` turns them into a 400 here).
+  - Rider delete is a transaction removing the `riders` row then the `users` row (cascade would cover it; explicit for intent). Controller blocks self-delete with 400 before the permission check's 403 would ever apply.
+  - Riders list joins `users` — the join's `where` must be identical in the rows query and the count query or `total` drifts from the page.
+- **Tests**: unit specs (mocked `DatabaseService`, `db.transaction` stubbed as `vi.fn(async (fn) => fn(tx))`) + three e2e files. **e2e runs `fileParallelism: false`** — every spec shares one Postgres database and the permissions spec rewrites RBAC grants, so parallel files race on global state; that spec snapshots and restores those grants in `beforeAll`/`afterAll`.
 
 ---
 
@@ -112,3 +114,4 @@ Read-only aggregates, no new tables.
 - **Order center**: tracking codes, status history, and the state machine make `orders` the single source of truth the frontend and Viber summaries read from.
 - **RIDER visibility**: RIDER accounts see only self-scoped data (assigned deliveries); every RIDER route must re-check row ownership, not just the permission.
 - **Test hygiene**: e2e runs against the shared docker Postgres and cleans up after itself; keep using unique emails (`${name}-${Date.now()}@e2e.local`) so parallel runs don't collide.
+- **Stale doc — fix separately**: `docs/rbac-system.md` still describes the pre-redesign *dynamic* permission-key model (create/delete keys at runtime via `POST`/`DELETE /permissions`). The fixed `MODULE_ACTIONS` catalog replaced that: those endpoints are gone and keys are seeded/read-only. The file needs a rewrite before the frontend reads it.

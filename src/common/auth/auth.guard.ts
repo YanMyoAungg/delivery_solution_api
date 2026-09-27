@@ -74,8 +74,7 @@ class RawJwtAuthGuard implements CanActivate {
 
     if (
       row.passwordChangedAt &&
-      payload.iat !== undefined &&
-      row.passwordChangedAt.getTime() / 1000 > payload.iat
+      this.isTokenStale(payload, row.passwordChangedAt)
     ) {
       throw new UnauthorizedException('Token invalidated by password change');
     }
@@ -89,6 +88,31 @@ class RawJwtAuthGuard implements CanActivate {
     };
 
     return true;
+  }
+
+  /**
+   * Whether a verified token was minted before the account's password was last
+   * changed, and so should no longer be honoured.
+   *
+   * `users.password_changed_at` keeps milliseconds while the JWT `iat` claim
+   * keeps whole seconds, so ordering the two directly is unreliable: a token
+   * minted milliseconds *after* the write floors to the same second and looks
+   * stale. Tokens signed since `tokenIssuedAtMs` was added carry their exact
+   * issue instant and compare precisely; any token minted before that claim
+   * existed falls back to a floored, second-granularity comparison.
+   */
+  private isTokenStale(payload: JwtPayload, passwordChangedAt: Date): boolean {
+    const changedAtMilliseconds = passwordChangedAt.getTime();
+
+    if (payload.tokenIssuedAtMs !== undefined) {
+      return changedAtMilliseconds > payload.tokenIssuedAtMs;
+    }
+
+    if (payload.iat !== undefined) {
+      return Math.floor(changedAtMilliseconds / 1000) > payload.iat;
+    }
+
+    return false;
   }
 }
 

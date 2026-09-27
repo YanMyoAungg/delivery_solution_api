@@ -5,6 +5,9 @@ import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { PermissionsModule } from './permissions/permissions.module.js';
 import { RolesModule } from './roles/roles.module.js';
+import { ShopsModule } from './shops/shops.module.js';
+import { CustomersModule } from './customers/customers.module.js';
+import { RidersModule } from './riders/riders.module.js';
 import { DatabaseModule } from './common/database/database.module.js';
 import { HealthModule } from './common/health/health.module.js';
 import { JwtAuthGuard } from './common/auth/auth.guard.js';
@@ -25,6 +28,9 @@ import { envValidation } from './config/env.validation.js';
     UsersModule,
     PermissionsModule,
     RolesModule,
+    ShopsModule,
+    CustomersModule,
+    RidersModule,
   ],
   providers: [
     {

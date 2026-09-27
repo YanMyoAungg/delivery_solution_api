@@ -47,7 +47,18 @@ function roleIdRequired(
 /** seed grants: role name → keys (OWNER entries ignored — system role holds all). */
 const GRANTS: Record<Exclude<SeedRoleName, 'OWNER'>, string[]> = {
   ADMIN: [...PERMISSION_KEYS],
-  OFFICER: ['users.read'],
+  OFFICER: [
+    'users.read',
+    'shops.create',
+    'shops.read',
+    'shops.update',
+    'customers.create',
+    'customers.read',
+    'customers.update',
+    'riders.create',
+    'riders.read',
+    'riders.update',
+  ],
   RIDER: [],
 };
 

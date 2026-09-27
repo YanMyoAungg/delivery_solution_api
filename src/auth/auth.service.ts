@@ -50,6 +50,11 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       roleId: user.roleId,
+      // `iat` (set by jsonwebtoken) is whole seconds, which cannot order this
+      // token against a millisecond-precision `password_changed_at`. Stamp the
+      // exact instant so a password rotation invalidates only tokens minted
+      // before it, even within the same second.
+      tokenIssuedAtMs: Date.now(),
     };
 
     const accessToken = await this.jwt.signAsync(payload, {

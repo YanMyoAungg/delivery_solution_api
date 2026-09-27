@@ -6,6 +6,8 @@ import { setupApp, setupSwagger } from '../src/setup-app.js';
 import { DatabaseService } from '../src/common/database/database.service.js';
 import { users } from '../src/users/user.schema.js';
 import { roles } from '../src/roles/roles.schema.js';
+import { role_permissions } from '../src/roles/role-permissions.schema.js';
+import { permissions } from '../src/permissions/permissions.schema.js';
 import { hashPassword } from '../src/common/utils/password.util.js';
 import { eq } from 'drizzle-orm';
 
@@ -14,6 +16,8 @@ describe('Permissions & Roles (e2e)', () => {
   let database: DatabaseService;
   const cleanupIds: string[] = [];
   const roleIds: Record<string, string> = {};
+  /** Grants the PUT tests overwrite; captured up front so afterAll can restore them. */
+  const originalGrants: Record<string, string[]> = {};
 
   const run = Date.now();
 
@@ -64,12 +68,52 @@ describe('Permissions & Roles (e2e)', () => {
     for (const name of ['OWNER', 'ADMIN', 'OFFICER', 'RIDER']) {
       roleIds[name] = await getRoleId(name);
     }
+
+    // The PUT tests replace OFFICER and RIDER grants outright. Snapshot them so
+    // specs running after this file still see the seeded RBAC state.
+    for (const [roleName, roleId] of Object.entries(roleIds)) {
+      const rows = await database.db
+        .select({ name: permissions.name })
+        .from(role_permissions)
+        .innerJoin(
+          permissions,
+          eq(permissions.id, role_permissions.permissionId),
+        )
+        .where(eq(role_permissions.roleId, roleId));
+      originalGrants[roleName] = rows.map((row) => row.name);
+    }
   });
 
   afterAll(async () => {
     for (const id of cleanupIds) {
       await database.db.delete(users).where(eq(users.id, id));
     }
+
+    // Rebuild the grant rows exactly as seeded — seeded spec order is not
+    // guaranteed, so a later file must not inherit this file's mutations.
+    const allPermissions = await database.db
+      .select({ id: permissions.id, name: permissions.name })
+      .from(permissions);
+    const permissionIdByName = new Map(
+      allPermissions.map((row) => [row.name, row.id]),
+    );
+
+    for (const [roleName, names] of Object.entries(originalGrants)) {
+      const roleId = roleIds[roleName];
+      await database.db
+        .delete(role_permissions)
+        .where(eq(role_permissions.roleId, roleId));
+
+      const rows = names
+        .map((name) => permissionIdByName.get(name))
+        .filter((id): id is string => id !== undefined)
+        .map((permissionId) => ({ roleId, permissionId }));
+
+      if (rows.length > 0) {
+        await database.db.insert(role_permissions).values(rows);
+      }
+    }
+
     await app.close();
   });
 
