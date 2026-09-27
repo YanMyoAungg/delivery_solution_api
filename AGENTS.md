@@ -1,6 +1,6 @@
 # AGENTS.md
 
-NestJS 12 (Express) + TypeScript API for a single delivery company's operations. Postgres 18/Drizzle, Redis, Swagger, Vitest. Single package, no monorepo. Nothing is committed to git yet — only commit/push when the user explicitly asks.
+NestJS 12 (Express) + TypeScript API for a single delivery company's operations. Postgres 18/Drizzle, Redis, Swagger, Vitest. Single package, no monorepo. Only commit/push when the user explicitly asks.
 
 ## Skills — invoke before task-specific code
 
@@ -83,4 +83,4 @@ e2e requires `docker compose up -d` running (Postgres on host port 5433); it ins
 
 - `src/common/` — cross-cutting: `auth/` (global guards, decorators, seeded permission keys), `database/` (global Drizzle service), `health/` (public probe), `utils/password.util.ts`.
 - `src/auth/`, `src/users/` — Phase 1 modules (login/me/change-password; admin user CRUD).
-- Phases 2–8 (shops/customers/riders, orders, pickups, deliveries, returns+reconciliation, notifications+Viber, reports) will land as `src/<domain>/` following the same pattern; phase roadmap is at the bottom of README.md.
+- Phases 2–5 (shops/customers/riders, orders, pickups, deliveries) are implemented under `src/<domain>/`. Phase 6 (returns + reconciliation) is domain-preflight blocked; notifications/Viber and reports remain later phases. The roadmap is at the bottom of README.md.

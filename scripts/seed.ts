@@ -47,8 +47,15 @@ function roleIdRequired(
 /** seed grants: role name → keys (OWNER entries ignored — system role holds all). */
 const GRANTS: Record<Exclude<SeedRoleName, 'OWNER'>, string[]> = {
   ADMIN: [...PERMISSION_KEYS],
-  OFFICER: ['users.read'],
-  RIDER: [],
+  OFFICER: [
+    'pickups.create',
+    'pickups.read',
+    'pickups.update',
+    'deliveries.create',
+    'deliveries.read',
+    'deliveries.update',
+  ],
+  RIDER: ['deliveries.read', 'deliveries.update'],
 };
 
 async function upsertPermissionNames(): Promise<Map<string, string>> {
