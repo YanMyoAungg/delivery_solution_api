@@ -4,9 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-NestJS 12 (Express) + TypeScript API for a single delivery company's operations: shops, customers, riders, orders, pickups, deliveries, returns, payments/COD, notifications. Postgres 18/Drizzle ORM, Redis (future jobs), Swagger, Vitest. Single package, pnpm workspaces, ESM under `nodenext`. Only commit/push when the user explicitly asks.
+NestJS 12 (Express) + TypeScript API for a single delivery company's operations: shops, customers, riders, townships, orders, and deliveries. Packages are collected outside the system and entered by office staff after arriving at the office; there is no pickup module. Postgres 18/Drizzle ORM, Redis (future jobs), Swagger, Vitest. Single package, pnpm workspaces, ESM under `nodenext`. Only commit/push when the user explicitly asks.
 
-Phase status (roadmap in `README.md` / `PLAN.md`): Foundation ✅, Phase 1 (Users/Auth/RBAC) ✅, Phases 2–5 (master data → orders → pickups → deliveries) ✅. Phase 6 (returns/COD/reconciliation) is domain-preflight blocked; notifications and reports remain later phases.
+Phase status (roadmap in `README.md` / `PLAN.md`): Foundation ✅, Phase 1 (Users/Auth/RBAC) ✅, Phase 2 master data ✅, Phase 3.5 townships/round-robin/rider board ✅. Phase 4 pickups are deleted. Phase 5 delivery operations are partial; Phase 3.6 daily custody is deferred; Phase 6 returns/COD/reconciliation is domain-preflight blocked. Notifications and reports remain later phases.
+
+**Current delivery invariants:** office creates an order only after the package reaches the office. `POST /orders` requires a township and transactionally assigns an ACTIVE rider covering it using the separate, per-township `township_rotation` cursor. Order and delivery statuses are exactly `ASSIGNED | DELIVERED | FAILED`; rider completion/failure acts directly from `ASSIGNED`. `FAILED → ASSIGNED` retry remains capped at three attempts. Do not restore `PENDING`, `PICKED_UP`, `RECEIVED_AT_OFFICE`, `OUT_FOR_DELIVERY`, `RETURNED`, a start route/event, or `startedAt` as convenience states.
+
+**Rider security:** riders use `GET /rider/board` and `/rider/dashboard`, self-scoped from JWT with `deliveries.read`. The board shows own orders in full and colleagues' township orders with option-B redaction. Riders must not have `orders.read`; office order/history uses `orders.read`, and office reassign uses `orders.update`. `APP_TIMEZONE` defaults to `Asia/Yangon` and drives rider date boundaries. Shift/custody-return and the 5-of-10 rule are not represented in the current schema.
 
 ## Skills — invoke before task-specific code
 
@@ -99,13 +103,13 @@ e2e requires `docker compose up -d` (Postgres publishes on host port from `DB_PO
   - `database/` — global Drizzle/Postgres `DatabaseService`; `schema.ts` is the central re-export point and the ONLY schema imports `db:generate` sees.
   - `auth/` — global guards, decorators (`@Public()`, `@RequirePermissions()`, `@CurrentUser()`), and `permissions.ts` (permission→roles matrix).
   - `health/` — public probe (`GET /api/v1/health`).
-- **Feature modules** (`src/auth/`, `src/users/`, future `src/shops/` etc.) each own controller/service/DTOs + a `*.schema.ts` + a `*.module.ts`.
+- **Feature modules** (`src/auth/`, `src/users/`, `src/shops/`, `src/customers/`, `src/riders/`, `src/townships/`, `src/orders/`, `src/deliveries/`) each own controller/service/DTOs plus any domain schema/module files.
 
 ## Conventions that differ from Nest defaults
 
 - **ESM `nodenext`**: relative imports MUST end in `.js` (`import { users } from '../../users/user.schema.js'`). Missing extension = tsc build error.
 - **Route guard** (from `src/common/auth/auth.guard.ts`): token's `sub` must match an active user; guard rebuilds the user from DB — don't keep stale copies of `req.user`.
-- **RBAC is a fixed module×action catalog** (spatie-style, three tables `roles`/`permissions`/`role_permissions` + `users.role_id`): Owner/Admin assign, per role, which modules a role can create/read/update/delete/export/import (view≡read, edit≡update). The catalog is **seeded and read-only** — `src/common/auth/permission-keys.ts` is the single source of truth (`MODULE_ACTIONS` + exact `PermissionKey` union), 13 modules / 68 keys (users, shops, customers, riders, orders, pickups, deliveries, returns, payments, notifications each have 6 actions; roles has 4; permissions has read+update; reports has read+export). No runtime key creation — `POST /permissions` and `DELETE /permissions/:name` are removed; adding a module is a code change to `MODULE_ACTIONS` + re-seed.
+- **RBAC is a fixed module×action catalog** (spatie-style, three tables `roles`/`permissions`/`role_permissions` + `users.role_id`): Owner/Admin assign, per role, which modules a role can create/read/update/delete/export/import (view≡read, edit≡update). The catalog is **seeded and read-only** — `src/common/auth/permission-keys.ts` is the single source of truth (`MODULE_ACTIONS` + exact `PermissionKey` union), currently 12 modules / 62 keys. There is no `pickups` module or `deliveries.claim` permission. No runtime key creation — `POST /permissions` and `DELETE /permissions/:name` are removed; adding a module is a code change to `MODULE_ACTIONS` + re-seed.
   - `is_system` roles (OWNER) bypass grant rows entirely (shortcircuit in `PermissionService.getEffectivePermissions`) — never grant rows for OWNER.
   - Scope: caller can only grant a subset of its own effective permissions; no self-modification; ADMIN cannot touch OWNER/ADMIN. `@RequirePermissions('x.y')` **fails closed** for unknown keys.
   - `permissions.name` format `module.action` (lowercase); `module` is a stored column. `roles.name` UPPER_CASE, immutable after create; delete-role blocked while `userCount > 0`.

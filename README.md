@@ -1,31 +1,41 @@
 # Delivery Management System — Backend API
 
-Backend for a delivery management application serving a single delivery company's operations: shops, customers, riders, orders, pickups, deliveries, returns, payments/COD, and scheduled notifications. This repository covers the **Foundation Phase**, **Phase 1 — Users, Authentication & RBAC**, **Phase 2 — Master Data**, **Phase 3 — Orders Core**, **Phase 4 — Pickups**, and **Phase 5 — Delivery Operations**. Returns + Payment Reconciliation remains blocked at domain preflight.
+Backend for a delivery management application serving a single delivery company's operations: shops, customers, riders, townships, orders, and deliveries. Packages are collected outside the system and entered by office staff after arriving at the office; this API does not model pickups. Returns + Payment Reconciliation remains blocked at domain preflight, and daily rider custody is deferred.
 
 ## Current Development Status
 
 - **Foundation:** COMPLETE
 - **Phase 1:** COMPLETE
-- **Permission catalog:** 13 modules / 68 fixed keys
+- **Permission catalog:** 12 modules / 62 fixed keys
 - **Phase 2 — Master Data:** COMPLETE
-- **Phase 3 — Orders Core:** COMPLETE
-- **Phase 4 — Pickups:** COMPLETE
-- **Phase 5 — Delivery Operations:** COMPLETE
+- **Phase 3 — Orders Core:** SUPERSEDED by the Phase 3.5 lifecycle
+- **Phase 3.5 — Townships + round-robin + rider surface:** COMPLETE (backend and frontend)
+- **Phase 4 — Pickups:** DELETED; no pickup module/state exists
+- **Phase 5 — Delivery Operations:** PARTIAL; assignment, direct complete/fail, and retry are implemented; proof/COD collection remain deferred
+- **Phase 3.6 — Daily rider custody:** DEFERRED; shift, sign-out/sign-in, undelivered return, and 5-of-10 classification are not modeled
 - **Phase 6 — Returns + Payment Reconciliation:** DOMAIN PREFLIGHT BLOCKED; implementation not authorized
-- **Next authorized activity:** approve the Returns/Payment/Reconciliation domain decisions and ADR; do not implement before approval
+- **Next activity:** resolve Phase 3.6 daily-custody decisions or complete Phase 6 domain preflight before implementing either workflow
 
 Known project-state findings:
 
-- `README.md` and `docs/rbac-system.md` contain older descriptions of runtime-created permissions; the implemented catalog is fixed and seeded from `src/common/auth/permission-keys.ts`.
+- `docs/rbac-system.md` is retained as a historical RBAC design record and is not authoritative for the implemented fixed catalog in `src/common/auth/permission-keys.ts`.
 - `PLAN.md` still contains proposed permission names from the earlier design; Shops uses the fixed `shops.*` catalog keys.
-- `docs/rbac-system.md` is retained as a historical RBAC design record and is not authoritative for the implemented fixed catalog.
 - Returns + Payment Reconciliation has no approved table, service, route, DTO, history model, payment ledger, reconciliation model, or implementation authority.
-- The existing `OUT_FOR_DELIVERY -> RETURNED` order-state edge remains in `OrderStateService`, but no approved Returns workflow invokes it.
+- Current `OrderStatus` and `DeliveryStatus` are `ASSIGNED | DELIVERED | FAILED`; `FAILED → ASSIGNED` retry is capped at three attempts. There is no `PENDING`, `PICKED_UP`, `RECEIVED_AT_OFFICE`, `OUT_FOR_DELIVERY`, `RETURNED`, delivery `start`, or `startedAt`.
 - Delivery attempts are limited to three; the third failure leaves the order `FAILED`, retry is rejected, and there is no automatic return.
 - The Phase 6 planning notes are proposals only until the listed return, payment, reconciliation, and permission decisions are explicitly approved.
-- The current unit suite has 72 passing tests and the current e2e suite has 66 passing tests when run with the required environment variables and seeded disposable database.
+- Current quality gate: 73 unit tests and 66 e2e tests pass with the required environment variables and seeded disposable database.
 - `RolesService.create()` accepts the caller role id but does not use it for a scope check. Existing role-management behavior is intentionally unchanged for Phase 2; current ADMIN/user-scope authorization tests pass.
-- `pnpm-workspace.yaml` contains the intended `allowBuilds` approval for `esbuild` and `bcrypt`; the working-tree difference also includes the final newline normalization. No dependency or framework change is required.
+- `APP_TIMEZONE` defaults to `Asia/Yangon` and controls rider board/dashboard date boundaries.
+
+## Current Order Intake and Rider Flow
+
+- A separate collector brings packages to the office. Office staff create an order after it arrives; the collector's pickup journey is outside this system.
+- `POST /api/v1/orders` requires a township. The API rejects a township with no active covering rider, then assigns the next rider in that township's round-robin rotation in the same transaction as the order and first delivery attempt.
+- The per-township cursor is stored in `township_rotation`; rider coverage is stored in `rider_townships`.
+- Orders begin at `ASSIGNED` and transition to `DELIVERED` or `FAILED`. Riders do not claim or start deliveries; complete/fail acts directly on their assigned attempt.
+- `GET /api/v1/rider/board` and `/api/v1/rider/dashboard` require `deliveries.read` and derive the rider from the JWT. The board returns own orders in full and redacts other riders' orders to routing context. Riders must not receive `orders.read`.
+- Office order/delivery history uses `orders.read`; office reassign uses `orders.update`. Phase 3.6 custody and Phase 6 returns/payment reconciliation are separate deferred workflows.
 
 ## Tech Stack
 
@@ -103,8 +113,8 @@ RBAC uses a fixed, seeded module/action catalog with dynamic role grants (`roles
 |---------|-------|
 | `OWNER` | System role (`is_system=true`) — holds every permission, cannot be deactivated/deleted via API |
 | `ADMIN` | Office administration |
-| `OFFICER`| Order/pickup/delivery operations |
-| `RIDER` | Delivery field worker (authenticated; no back-office administration) |
+| `OFFICER` | Order, township, and delivery operations |
+| `RIDER` | Self-scoped rider board and own delivery actions (`deliveries.read/update`; no `orders.read`) |
 
 Authorization runs through the global `PermissionsGuard` + `@RequirePermissions(...)` decorator; effective permissions come from the role's grant rows (system roles short-circuit to the full catalog). The fixed catalog lives in `src/common/auth/permission-keys.ts` (`PERMISSION_KEYS`/`PermissionKey`); routes without `@RequirePermissions` allow any authenticated user. New permission keys are code changes followed by re-seeding, not runtime-created records.
 
@@ -183,25 +193,23 @@ src/
 ├── shops/
 ├── customers/
 ├── riders/
+├── townships/
 ├── orders/
-├── pickups/
 ├── deliveries/
-├── returns/
-├── payments/
-├── notifications/
-├── integrations/
-├── reports/
 └── common/
 ```
+
+Returns, payments/reconciliation, notifications/Viber, and reports are later phases; their planning sections do not imply that those modules exist in the current source tree.
 
 ## Phase Roadmap
 
 - [x] **Foundation** — app/API infra, Drizzle pipeline, Swagger, health, Docker dev environment
 - [x] **Phase 1 — Users + Auth + RBAC** — JWT login, fixed permission catalog with dynamic role grants, user CRUD, OWNER seed
 - [x] **Phase 2 — Master Data (shops, customers, riders)**
-- [x] Phase 3 — Orders core (state machine)
-- [x] Phase 4 — Pickups
-- [x] Phase 5 — Deliveries
+- [x] Phase 3.5 — Townships, round-robin assignment, rider board/dashboard
+- [x] Phase 4 — Pickups deleted (package collection/intake is out of system)
+- [ ] Phase 3.6 — Daily rider custody (deferred)
+- [x] Phase 5 — Delivery operations core (direct complete/fail, retry; proof/COD collection deferred)
 - [ ] Phase 6 — Returns + payment reconciliation
 - [ ] Phase 7 — Notifications + Viber
 - [ ] Phase 8 — Reports

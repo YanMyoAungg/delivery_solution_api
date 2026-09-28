@@ -15,8 +15,8 @@ Legend: ✅ done · phase-relative commit (migration + code + tests together).
 - **Phase 5 — Delivery Operations:** PARTIAL — self-scoped rider actions and active-attempt uniqueness remain; assignment now uses system round-robin and `start` is removed.
 - **Phase 6 — Returns + Payment Reconciliation:** PREFLIGHT BLOCKED; implementation not authorized
 - **Phase 3.6 — Daily rider custody:** DEFERRED, not authorized. See §Phase 3.6.
-- **Phase 3.5 — Townships + round-robin:** BACKEND COMPLETE. Frontend handoff: `../d_frontend/BACKEND_PHASE_3_5_HANDOFF.md`.
-- **Next activity:** implement the frontend handoff. Master-data reconciliation (Part A) is **complete and applied as migration `0012`**. Phase 6 remains domain-preflight blocked; Phase 3.6 remains deferred.
+- **Phase 3.5 — Townships + round-robin:** COMPLETE (backend and frontend). Frontend contract/implementation record: `../d_frontend/BACKEND_PHASE_3_5_HANDOFF.md`.
+- **Next activity:** domain decisions only. Phase 6 remains preflight-blocked; Phase 3.6 daily custody remains deferred pending client decisions. Master-data reconciliation (Part A) is complete and applied as migration `0012`.
 
 Known project-state findings:
 
@@ -303,7 +303,7 @@ current implementation.
 
 ---
 
-## Phase 3.5 — Townships, round-robin assignment, rider dashboard — BACKEND COMPLETE (2026-09-29)
+## Phase 3.5 — Townships, round-robin assignment, rider dashboard — COMPLETE (2026-09-29)
 
 ### 3.5.1 Townships
 
@@ -454,11 +454,11 @@ The loop as described: a rider takes ~10 packages in a day; if 5 are not deliver
 
 ---
 
-## Part B — Frontend (`d_frontend`, implementation pending)
+## Part B — Frontend (`d_frontend`) — COMPLETE
 
-The dedicated frontend-agent handoff is `../d_frontend/BACKEND_PHASE_3_5_HANDOFF.md`. It records the current endpoint and DTO contract, role/PII boundary, and required rider, township, office-order, and rider-board work. Frontend has not been implemented in this phase.
+Implemented and pushed in `d_frontend` (`4b5d97d`, with follow-up `390a08e`). The handoff at `../d_frontend/BACKEND_PHASE_3_5_HANDOFF.md` is retained as the API/security contract reference for future frontend maintenance.
 
-**B0 — Regenerate the contract from the implemented backend.** `src/types/api.ts` is dated 2026-09-18 and predates this implementation; regenerate with `pnpm codegen` against the running API, then let the compiler enumerate every break. Never hand-edit generated `api.ts`.
+**B0 — Contract regenerated.** `src/types/api.ts` was generated from the implemented backend via `pnpm codegen`; regenerate again only when the API contract changes. Never hand-edit generated `api.ts`.
 
 **B1 — Keep the hand-written DTO workarounds.** `src/features/*/api.ts` hand-types around codegen emitting `phone: Record<string, never> | null`. Verified still present: `@ApiPropertyOptional({ nullable: true })` on `string | null` still yields `Record<string, never>`, and the regenerated output additionally marks them optional (`phone?:`). Needs a small tweak, not a rewrite. Do not delete it as cleanup.
 
@@ -490,7 +490,7 @@ The dedicated frontend-agent handoff is `../d_frontend/BACKEND_PHASE_3_5_HANDOFF
 
 ## Part C — End-to-end verification
 
-Against a running API with the seeded OWNER, plus RIDER accounts for the self-scoped paths.
+Verified against the running API with seeded OWNER and RIDER accounts. Backend gates: 73 unit tests and 66 e2e tests; frontend gates: lint/build/existing tests pass.
 
 **Happy path:** office inserts an order with a township that has active riders → the order lands **already `ASSIGNED`**, with rider A from the rotation, a first `delivery_attempts` row, and a `null → ASSIGNED` history entry. The next insert for that township goes to rider B; a fourth wraps back to rider A. Rider A's board shows it in full; rider B's board shows it redacted. Rider A taps **complete** — one tap, no start step. The office sees rider A's name and phone on the order.
 
