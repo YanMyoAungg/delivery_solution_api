@@ -14,6 +14,21 @@ export class OrderResponseDto {
   @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
   customerId: string;
 
+  @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
+  townshipId: string;
+
+  @ApiProperty({ example: 'Hlaing' })
+  townshipName: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  riderId: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  riderName: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  riderPhone: string | null;
+
   @ApiPropertyOptional({
     description:
       'Opaque package metadata; shape and physical units are not yet defined',

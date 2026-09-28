@@ -30,8 +30,6 @@ export class DeliveryResponseDto {
   @ApiProperty()
   assignedAt: string;
   @ApiPropertyOptional({ nullable: true })
-  startedAt: string | null;
-  @ApiPropertyOptional({ nullable: true })
   deliveredAt: string | null;
   @ApiPropertyOptional({ nullable: true })
   failedAt: string | null;

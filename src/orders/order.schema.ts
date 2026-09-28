@@ -11,16 +11,12 @@ import {
 } from 'drizzle-orm/pg-core';
 import { customers } from '../customers/customer.schema.js';
 import { shops } from '../shops/shop.schema.js';
+import { townships } from '../townships/township.schema.js';
 
 export const ORDER_STATUSES = [
-  'PENDING',
-  'PICKED_UP',
-  'RECEIVED_AT_OFFICE',
   'ASSIGNED',
-  'OUT_FOR_DELIVERY',
   'DELIVERED',
   'FAILED',
-  'RETURNED',
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
@@ -37,6 +33,9 @@ export const orders = pgTable(
     customerId: uuid('customer_id')
       .notNull()
       .references(() => customers.id, { onDelete: 'restrict' }),
+    townshipId: uuid('township_id')
+      .notNull()
+      .references(() => townships.id, { onDelete: 'restrict' }),
     packageInfo: jsonb('package_info'),
     deliveryFee: numeric('delivery_fee', { precision: 12, scale: 2 })
       .notNull()
@@ -44,7 +43,7 @@ export const orders = pgTable(
     codAmount: numeric('cod_amount', { precision: 12, scale: 2 })
       .notNull()
       .default('0'),
-    status: orderStatusEnum('status').notNull().default('PENDING'),
+    status: orderStatusEnum('status').notNull().default('ASSIGNED'),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -58,6 +57,7 @@ export const orders = pgTable(
     index('orders_status_idx').on(table.status),
     index('orders_shop_idx').on(table.shopId),
     index('orders_customer_idx').on(table.customerId),
+    index('orders_township_created_at_idx').on(table.townshipId, table.createdAt),
     index('orders_created_at_idx').on(table.createdAt),
     index('orders_status_created_at_idx').on(table.status, table.createdAt),
   ],

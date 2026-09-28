@@ -10,7 +10,6 @@ describe('Delivery workflow contract', () => {
     expect(MAX_DELIVERY_ATTEMPTS).toBe(3);
     expect(DELIVERY_STATUSES).toEqual([
       'ASSIGNED',
-      'OUT_FOR_DELIVERY',
       'DELIVERED',
       'FAILED',
     ]);
@@ -24,5 +23,6 @@ describe('Delivery workflow contract', () => {
     ]);
     expect(DELIVERY_HISTORY_EVENTS).toContain('RETRY_CREATED');
     expect(DELIVERY_HISTORY_EVENTS).toContain('REASSIGNED');
+    expect(DELIVERY_HISTORY_EVENTS).not.toContain('STARTED');
   });
 });

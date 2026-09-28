@@ -20,6 +20,7 @@ describe('envValidation', () => {
     expect(config.DB_USER).toBe('delivery_user');
     expect(config.JWT_EXPIRES_IN).toBe('1h');
     expect(config.REDIS_PORT).toBe(6379);
+    expect(config.APP_TIMEZONE).toBe('Asia/Yangon');
   });
 
   it('throws when required environment variables are missing', () => {
@@ -36,6 +37,7 @@ describe('envValidation', () => {
       DB_PORT: '5433',
       REDIS_PORT: '6380',
       JWT_EXPIRES_IN: '24h',
+      APP_TIMEZONE: 'UTC',
     });
 
     expect(config.PORT).toBe(8080);
@@ -43,5 +45,12 @@ describe('envValidation', () => {
     expect(config.DB_PORT).toBe(5433);
     expect(config.REDIS_PORT).toBe(6380);
     expect(config.JWT_EXPIRES_IN).toBe('24h');
+    expect(config.APP_TIMEZONE).toBe('UTC');
+  });
+
+  it('rejects an invalid office timezone', () => {
+    expect(() => envValidation({ ...baseEnv, APP_TIMEZONE: 'Mars/Olympus' })).toThrow(
+      'Invalid APP_TIMEZONE: Mars/Olympus',
+    );
   });
 });

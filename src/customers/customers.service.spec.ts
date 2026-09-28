@@ -9,6 +9,7 @@ function baseCustomer(overrides: Record<string, unknown> = {}) {
     name: 'Aung Aung',
     phone: '09123456789',
     address: 'Main Road',
+    notes: 'Prefers morning delivery',
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -82,6 +83,7 @@ describe('CustomersService', () => {
       name: 'Aung Aung',
       phone: null,
       address: null,
+      notes: null,
     });
   });
 

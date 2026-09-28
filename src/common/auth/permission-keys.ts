@@ -17,7 +17,6 @@ export const MODULE_ACTIONS = {
   customers: ['create', 'read', 'update', 'delete', 'export', 'import'],
   riders: ['create', 'read', 'update', 'delete', 'export', 'import'],
   orders: ['create', 'read', 'update', 'delete', 'export', 'import'],
-  pickups: ['create', 'read', 'update', 'delete', 'export', 'import'],
   deliveries: ['create', 'read', 'update', 'delete', 'export', 'import'],
   returns: ['create', 'read', 'update', 'delete', 'export', 'import'],
   payments: ['create', 'read', 'update', 'delete', 'export', 'import'],

@@ -39,7 +39,7 @@ describe('Riders (e2e)', () => {
       .values({
         name: 'Riders E2E Owner',
         email: `riders-owner-${run}@e2e.local`,
-        passwordHash: await hashPassword('owner1234'),
+        passwordHash: await hashPassword('Password1234'),
         roleId: role.id,
         status: 'ACTIVE',
       })
@@ -50,7 +50,7 @@ describe('Riders (e2e)', () => {
       .post('/api/v1/auth/login')
       .send({
         email: `riders-owner-${run}@e2e.local`,
-        password: 'owner1234',
+        password: 'Password1234',
       })
       .expect(200);
     ownerToken = login.body.accessToken as string;
@@ -81,12 +81,25 @@ describe('Riders (e2e)', () => {
         email,
         phone: '09123456789',
         password: 'password1',
+        vehicleType: 'MOTORBIKE',
+        vehiclePlate: `MDY-${run}`,
+        licenseNo: `DL-${run}`,
+        nrcNumber: `NRC-${run}`,
+        emergencyContactPhone: '09111111111',
+        notes: 'Prefers north townships',
       })
       .expect(201);
     const riderId = created.body.id as string;
     const userId = created.body.userId as string;
     createdRiderIds.push(riderId);
     createdUserIds.push(userId);
+
+    expect(created.body.vehicleType).toBe('MOTORBIKE');
+    expect(created.body.vehiclePlate).toBe(`MDY-${run}`);
+    expect(created.body.licenseNo).toBe(`DL-${run}`);
+    expect(created.body.nrcNumber).toBe(`NRC-${run}`);
+    expect(created.body.emergencyContactPhone).toBe('09111111111');
+    expect(created.body.notes).toBe('Prefers north townships');
 
     expect(created.body.role).toBeUndefined();
     expect(created.body.email).toBe(email);
@@ -146,5 +159,44 @@ describe('Riders (e2e)', () => {
         password: 'short',
       })
       .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/riders')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: 'Bad Vehicle',
+        email: `bad-vehicle-${run}@e2e.local`,
+        password: 'password1',
+        vehicleType: 'HELICOPTER',
+      })
+      .expect(400);
+  });
+
+  it('defaults vehicleType to BIKE and updates licensing fields', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/riders')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Default Rider ${run}`,
+        email: `default-rider-${run}@e2e.local`,
+        password: 'password1',
+      })
+      .expect(201);
+    const riderId = created.body.id as string;
+    createdRiderIds.push(riderId);
+    createdUserIds.push(created.body.userId as string);
+
+    expect(created.body.vehicleType).toBe('BIKE');
+    expect(created.body.vehiclePlate).toBeNull();
+    expect(created.body.licenseNo).toBeNull();
+
+    const updated = await request(app.getHttpServer())
+      .patch(`/api/v1/riders/${riderId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ vehicleType: 'CAR', vehiclePlate: `CAR-${run}`, licenseNo: null })
+      .expect(200);
+    expect(updated.body.vehicleType).toBe('CAR');
+    expect(updated.body.vehiclePlate).toBe(`CAR-${run}`);
+    expect(updated.body.licenseNo).toBeNull();
   });
 });

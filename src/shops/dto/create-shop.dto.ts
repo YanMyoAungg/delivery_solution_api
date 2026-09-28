@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { SHOP_CHANNEL_TYPES, type ShopChannelType } from '../shop.schema.js';
 
 export class CreateShopDto {
   @ApiProperty({ example: 'Yangon Central Shop' })
@@ -19,4 +20,24 @@ export class CreateShopDto {
   @IsString()
   @MaxLength(500)
   address?: string | null;
+
+  @ApiPropertyOptional({ example: 'Deliver before 6pm' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string | null;
+
+  @ApiProperty({
+    enum: SHOP_CHANNEL_TYPES,
+    enumName: 'ShopChannelType',
+    example: 'VIBER',
+  })
+  @IsEnum(SHOP_CHANNEL_TYPES)
+  channelType: ShopChannelType;
+
+  @ApiProperty({ example: 'YangonCentralShop' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  channelName: string;
 }

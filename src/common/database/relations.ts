@@ -7,7 +7,7 @@ import { orders } from '../../orders/order.schema.js';
 import { shops } from '../../shops/shop.schema.js';
 import { riders } from '../../riders/rider.schema.js';
 import { orderStatusHistory } from '../../orders/order-status-history.schema.js';
-import { pickups, pickupOrders } from '../../pickups/pickup.schema.js';
+import { riderTownships, townships } from '../../townships/township.schema.js';
 import {
   deliveryAttempts,
   deliveryAttemptHistory,
@@ -45,8 +45,8 @@ export const rolePermissionsRelations = relations(
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   shop: one(shops, { fields: [orders.shopId], references: [shops.id] }),
+  township: one(townships, { fields: [orders.townshipId], references: [townships.id] }),
   history: many(orderStatusHistory),
-  pickupOrders: many(pickupOrders),
   deliveryAttempts: many(deliveryAttempts),
 }));
 
@@ -60,19 +60,19 @@ export const orderStatusHistoryRelations = relations(
   }),
 );
 
-export const pickupsRelations = relations(pickups, ({ one, many }) => ({
-  creator: one(users, { fields: [pickups.createdBy], references: [users.id] }),
-  orders: many(pickupOrders),
+export const townshipsRelations = relations(townships, ({ many }) => ({
+  riders: many(riderTownships),
+  orders: many(orders),
 }));
 
-export const pickupOrdersRelations = relations(pickupOrders, ({ one }) => ({
-  pickup: one(pickups, {
-    fields: [pickupOrders.pickupId],
-    references: [pickups.id],
+export const riderTownshipsRelations = relations(riderTownships, ({ one }) => ({
+  rider: one(riders, {
+    fields: [riderTownships.riderId],
+    references: [riders.id],
   }),
-  order: one(orders, {
-    fields: [pickupOrders.orderId],
-    references: [orders.id],
+  township: one(townships, {
+    fields: [riderTownships.townshipId],
+    references: [townships.id],
   }),
 }));
 

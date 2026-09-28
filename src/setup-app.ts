@@ -45,7 +45,7 @@ export function setupSwagger(app: INestApplication): void {
     .setTitle('Delivery Management API')
     .setDescription(
       'Backend API for the Delivery Management System — a single delivery ' +
-        "company's operations: shops, customers, riders, orders, pickups, " +
+        "company's operations: shops, customers, riders, townships, orders, " +
         'deliveries, returns, payments/COD and scheduled notifications.',
     )
     .setVersion('1.0')

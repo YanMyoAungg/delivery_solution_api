@@ -16,7 +16,6 @@ import { users } from '../users/user.schema.js';
 
 export const DELIVERY_STATUSES = [
   'ASSIGNED',
-  'OUT_FOR_DELIVERY',
   'DELIVERED',
   'FAILED',
 ] as const;
@@ -35,7 +34,6 @@ export type FailureReason = (typeof FAILURE_REASONS)[number];
 export const DELIVERY_HISTORY_EVENTS = [
   'ASSIGNED',
   'REASSIGNED',
-  'STARTED',
   'DELIVERED',
   'FAILED',
   'RETRY_CREATED',
@@ -69,7 +67,6 @@ export const deliveryAttempts = pgTable(
     assignedAt: timestamp('assigned_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
-    startedAt: timestamp('started_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     failedAt: timestamp('failed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
@@ -86,7 +83,7 @@ export const deliveryAttempts = pgTable(
     ),
     uniqueIndex('delivery_attempts_one_active_order_unique')
       .on(table.orderId)
-      .where(sql`${table.status} in ('ASSIGNED', 'OUT_FOR_DELIVERY')`),
+      .where(sql`${table.status} = 'ASSIGNED'`),
     index('delivery_attempts_order_created_idx').on(
       table.orderId,
       table.createdAt,

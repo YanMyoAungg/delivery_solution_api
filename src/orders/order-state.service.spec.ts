@@ -5,14 +5,9 @@ import { OrderStateService } from './order-state.service.js';
 import { ORDER_STATUSES, type OrderStatus } from './order.schema.js';
 
 const EXPECTED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ['PICKED_UP'],
-  PICKED_UP: ['RECEIVED_AT_OFFICE'],
-  RECEIVED_AT_OFFICE: ['ASSIGNED'],
-  ASSIGNED: ['OUT_FOR_DELIVERY'],
-  OUT_FOR_DELIVERY: ['DELIVERED', 'FAILED', 'RETURNED'],
-  FAILED: ['ASSIGNED'],
+  ASSIGNED: ['DELIVERED', 'FAILED'],
   DELIVERED: [],
-  RETURNED: [],
+  FAILED: ['ASSIGNED'],
 };
 
 function updateChain(returning: unknown[]) {
@@ -48,7 +43,7 @@ describe('OrderStateService', () => {
     service = moduleRef.get(OrderStateService);
   });
 
-  it('exposes exactly the roadmap transition matrix', () => {
+  it('exposes exactly the approved transition matrix', () => {
     for (const status of ORDER_STATUSES) {
       expect(service.getAllowedTransitions(status)).toEqual(
         EXPECTED_TRANSITIONS[status],
@@ -59,26 +54,25 @@ describe('OrderStateService', () => {
   it('allows every edge in the matrix and rejects the complement', () => {
     for (const from of ORDER_STATUSES) {
       for (const to of ORDER_STATUSES) {
-        const expected = EXPECTED_TRANSITIONS[from].includes(to);
-        expect(service.canTransition(from, to)).toBe(expected);
+        expect(service.canTransition(from, to)).toBe(
+          EXPECTED_TRANSITIONS[from].includes(to),
+        );
       }
     }
   });
 
-  it('rejects a terminal-state transition with BadRequestException', () => {
-    expect(() => service.assertTransition('DELIVERED', 'PENDING')).toThrow(
+  it('rejects transitions out of terminal state and self-transitions', () => {
+    expect(() => service.assertTransition('DELIVERED', 'ASSIGNED')).toThrow(
       BadRequestException,
     );
-    expect(() => service.assertTransition('PENDING', 'DELIVERED')).toThrow(
+    expect(() => service.assertTransition('ASSIGNED', 'ASSIGNED')).toThrow(
       BadRequestException,
     );
   });
 
-  it('applies an allowed transition and appends history atomically', async () => {
+  it('applies ASSIGNED → DELIVERED and appends history atomically', async () => {
     tx.update.mockReturnValue(updateChain([{ id: 'order-1' }]));
-    tx.insert.mockReturnValue({
-      values: vi.fn().mockResolvedValue(undefined),
-    });
+    tx.insert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
     db.transaction.mockImplementation(
       async (callback: (transaction: typeof tx) => Promise<void>) =>
         callback(tx),
@@ -86,8 +80,8 @@ describe('OrderStateService', () => {
 
     await service.applyTransition({
       orderId: 'order-1',
-      fromStatus: 'PENDING',
-      toStatus: 'PICKED_UP',
+      fromStatus: 'ASSIGNED',
+      toStatus: 'DELIVERED',
       changedBy: 'user-1',
     });
 
@@ -96,8 +90,8 @@ describe('OrderStateService', () => {
     const inserted = tx.insert.mock.results[0].value.values.mock.calls[0][0];
     expect(inserted).toMatchObject({
       orderId: 'order-1',
-      fromStatus: 'PENDING',
-      toStatus: 'PICKED_UP',
+      fromStatus: 'ASSIGNED',
+      toStatus: 'DELIVERED',
       changedBy: 'user-1',
     });
   });
@@ -106,8 +100,8 @@ describe('OrderStateService', () => {
     await expect(
       service.applyTransition({
         orderId: 'order-1',
-        fromStatus: 'PENDING',
-        toStatus: 'DELIVERED',
+        fromStatus: 'DELIVERED',
+        toStatus: 'ASSIGNED',
         changedBy: 'user-1',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -116,9 +110,7 @@ describe('OrderStateService', () => {
 
   it('raises ConflictException when the order is not in the expected status', async () => {
     tx.update.mockReturnValue(updateChain([]));
-    tx.insert.mockReturnValue({
-      values: vi.fn().mockResolvedValue(undefined),
-    });
+    tx.insert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
     db.transaction.mockImplementation(
       async (callback: (transaction: typeof tx) => Promise<void>) =>
         callback(tx),
@@ -127,8 +119,8 @@ describe('OrderStateService', () => {
     await expect(
       service.applyTransition({
         orderId: 'order-1',
-        fromStatus: 'PENDING',
-        toStatus: 'PICKED_UP',
+        fromStatus: 'ASSIGNED',
+        toStatus: 'FAILED',
         changedBy: 'user-1',
       }),
     ).rejects.toBeInstanceOf(ConflictException);

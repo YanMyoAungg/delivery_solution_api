@@ -13,21 +13,11 @@ type OrderStateExecutor = Pick<
   'update' | 'insert'
 >;
 
-/**
- * Allowed order-status transitions derived from the Phase 3 roadmap:
- * PENDING → PICKED_UP → RECEIVED_AT_OFFICE → ASSIGNED → OUT_FOR_DELIVERY
- * → DELIVERED | FAILED | RETURNED, plus the documented FAILED → ASSIGNED
- * retry edge used by the delivery attempt ledger.
- */
+/** Allowed transitions for an order already received and assigned by the office. */
 const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
-  PENDING: ['PICKED_UP'],
-  PICKED_UP: ['RECEIVED_AT_OFFICE'],
-  RECEIVED_AT_OFFICE: ['ASSIGNED'],
-  ASSIGNED: ['OUT_FOR_DELIVERY'],
-  OUT_FOR_DELIVERY: ['DELIVERED', 'FAILED', 'RETURNED'],
-  FAILED: ['ASSIGNED'],
+  ASSIGNED: ['DELIVERED', 'FAILED'],
   DELIVERED: [],
-  RETURNED: [],
+  FAILED: ['ASSIGNED'],
 };
 
 export interface ApplyTransitionParams {

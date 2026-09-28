@@ -4,6 +4,7 @@ import { DeliveriesController } from './deliveries.controller.js';
 import { OrdersDeliveriesController } from './orders-deliveries.controller.js';
 import { DeliveriesService } from './deliveries.service.js';
 import { RiderDeliveriesController } from './rider-deliveries.controller.js';
+import { RiderBoardController } from './rider-board.controller.js';
 
 @Module({
   imports: [OrdersModule],
@@ -11,6 +12,7 @@ import { RiderDeliveriesController } from './rider-deliveries.controller.js';
     DeliveriesController,
     OrdersDeliveriesController,
     RiderDeliveriesController,
+    RiderBoardController,
   ],
   providers: [DeliveriesService],
 })

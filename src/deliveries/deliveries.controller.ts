@@ -41,7 +41,7 @@ export class DeliveriesController {
 
   @Patch(':id/reassign')
   @HttpCode(200)
-  @RequirePermissions('deliveries.update')
+  @RequirePermissions('orders.update')
   @ApiOkResponse({ type: DeliveryDetailResponseDto })
   reassign(
     @Param('id', ParseUUIDPipe) id: string,
@@ -52,23 +52,12 @@ export class DeliveriesController {
   }
 
   @Get(':id')
-  @RequirePermissions('deliveries.read')
+  @RequirePermissions('orders.read')
   @ApiOkResponse({ type: DeliveryDetailResponseDto })
   get(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<DeliveryDetailResponseDto> {
     return this.deliveries.getById(id);
-  }
-
-  @Post(':id/start')
-  @HttpCode(200)
-  @RequirePermissions('deliveries.update')
-  @ApiOkResponse({ type: DeliveryDetailResponseDto })
-  start(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<DeliveryDetailResponseDto> {
-    return this.deliveries.start(id, user.id);
   }
 
   @Post(':id/complete')

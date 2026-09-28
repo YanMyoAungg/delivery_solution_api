@@ -14,6 +14,7 @@ export interface EnvironmentVariables {
   VIBER_BOT_TOKEN: string;
   VIBER_GROUP_ID: string;
   VIBER_WEBHOOK_URL: string;
+  APP_TIMEZONE: string;
 }
 
 export function envValidation(
@@ -25,6 +26,13 @@ export function envValidation(
     if (!env[key]) {
       throw new Error(`Missing required environment variable: ${key}`);
     }
+  }
+
+  const appTimezone = env.APP_TIMEZONE ?? 'Asia/Yangon';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: appTimezone });
+  } catch {
+    throw new Error(`Invalid APP_TIMEZONE: ${appTimezone}`);
   }
 
   return {
@@ -43,5 +51,6 @@ export function envValidation(
     VIBER_BOT_TOKEN: env.VIBER_BOT_TOKEN ?? '',
     VIBER_GROUP_ID: env.VIBER_GROUP_ID ?? '',
     VIBER_WEBHOOK_URL: env.VIBER_WEBHOOK_URL ?? '',
+    APP_TIMEZONE: appTimezone,
   };
 }

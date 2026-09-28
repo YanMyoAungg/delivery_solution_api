@@ -4,12 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, ilike, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
 import { isUniqueViolation } from '../common/database/is-unique-violation.js';
 import { escapeLikeWildcards } from '../common/utils/normalize.util.js';
 import { customers } from '../customers/customer.schema.js';
+import { deliveryAttemptHistory, deliveryAttempts } from '../deliveries/delivery.schema.js';
+import { roles } from '../roles/roles.schema.js';
+import { riders } from '../riders/rider.schema.js';
 import { shops } from '../shops/shop.schema.js';
+import { users } from '../users/user.schema.js';
+import { riderTownships, townships, townshipRotation } from '../townships/township.schema.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto.js';
 import { OrderDetailResponseDto } from './dto/order-detail-response.dto.js';
@@ -24,13 +29,32 @@ const MAX_TRACKING_CODE_ATTEMPTS = 3;
 
 type OrderRow = typeof orders.$inferSelect;
 type OrderHistoryRow = typeof orderStatusHistory.$inferSelect;
+type OrderTransaction = Pick<
+  typeof DatabaseService.prototype.db,
+  'select' | 'insert' | 'update'
+>;
 
-export function toOrderResponse(row: OrderRow): OrderResponseDto {
+interface RiderAssignment {
+  riderId: string | null;
+  riderName: string | null;
+  riderPhone: string | null;
+  townshipName: string;
+}
+
+export function toOrderResponse(
+  row: OrderRow,
+  assignment: RiderAssignment | null = null,
+): OrderResponseDto {
   return {
     id: row.id,
     trackingCode: row.trackingCode,
     shopId: row.shopId,
     customerId: row.customerId,
+    townshipId: row.townshipId,
+    townshipName: assignment?.townshipName ?? '',
+    riderId: assignment?.riderId ?? null,
+    riderName: assignment?.riderName ?? null,
+    riderPhone: assignment?.riderPhone ?? null,
     packageInfo: row.packageInfo as Record<string, unknown> | null,
     deliveryFee: row.deliveryFee,
     codAmount: row.codAmount,
@@ -90,8 +114,9 @@ export class OrdersService {
     ]);
 
     const total = Number(countResult[0]?.count ?? 0);
+    const data = await this.responsesForOrders(rows);
     return {
-      data: rows.map(toOrderResponse),
+      data,
       meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
     };
   }
@@ -99,7 +124,7 @@ export class OrdersService {
   async getById(id: string): Promise<OrderDetailResponseDto> {
     const row = await this.orderOrThrow(id);
     const history = await this.historyForOrder(id);
-    return { ...toOrderResponse(row), history };
+    return { ...(await this.responsesForOrders([row]))[0], history };
   }
 
   async getHistory(id: string): Promise<OrderHistoryResponseDto[]> {
@@ -116,17 +141,19 @@ export class OrdersService {
 
     for (let attempt = 1; attempt <= MAX_TRACKING_CODE_ATTEMPTS; attempt++) {
       try {
-        const order = await this.database.db.transaction(async (tx) => {
+        const created = await this.database.db.transaction(async (tx) => {
+          const { rider, townshipName } = await this.nextRider(tx, dto.townshipId);
           const [inserted] = await tx
             .insert(orders)
             .values({
               trackingCode: generateTrackingCode(),
               shopId: dto.shopId,
               customerId: dto.customerId,
+              townshipId: dto.townshipId,
               packageInfo: dto.packageInfo ?? null,
               deliveryFee: dto.deliveryFee ?? '0',
               codAmount: dto.codAmount ?? '0',
-              status: 'PENDING',
+              status: 'ASSIGNED',
               notes: dto.notes ?? null,
             })
             .returning();
@@ -134,14 +161,41 @@ export class OrdersService {
           await tx.insert(orderStatusHistory).values({
             orderId: inserted.id,
             fromStatus: null,
-            toStatus: 'PENDING',
+            toStatus: 'ASSIGNED',
             changedBy,
-            note: 'Order registered',
+            note: 'Order registered and assigned by township round-robin',
           });
 
-          return inserted;
+          const [deliveryAttempt] = await tx
+            .insert(deliveryAttempts)
+            .values({
+              orderId: inserted.id,
+              riderId: rider.id,
+              attemptNumber: 1,
+              assignedBy: changedBy,
+            })
+            .returning({ id: deliveryAttempts.id });
+          await tx.insert(deliveryAttemptHistory).values({
+            deliveryAttemptId: deliveryAttempt.id,
+            event: 'ASSIGNED',
+            actorId: changedBy,
+            previousRiderId: null,
+            newRiderId: rider.id,
+            note: 'Order assigned by township round-robin',
+          });
+          await tx
+            .update(townshipRotation)
+            .set({ lastAssignedRiderId: rider.id, updatedAt: new Date() })
+            .where(eq(townshipRotation.townshipId, dto.townshipId));
+
+          return { order: inserted, rider, townshipName };
         });
-        return toOrderResponse(order);
+        return toOrderResponse(created.order, {
+          riderId: created.rider.id,
+          riderName: created.rider.name,
+          riderPhone: created.rider.phone,
+          townshipName: created.townshipName,
+        });
       } catch (err) {
         const trackingCollision = isUniqueViolation(err);
         if (trackingCollision && attempt < MAX_TRACKING_CODE_ATTEMPTS) {
@@ -170,6 +224,113 @@ export class OrdersService {
       .where(eq(orderStatusHistory.orderId, orderId))
       .orderBy(orderStatusHistory.createdAt);
     return rows.map(toOrderHistoryResponse);
+  }
+
+  private async nextRider(
+    tx: OrderTransaction,
+    townshipId: string,
+  ): Promise<{
+    rider: { id: string; name: string; phone: string | null };
+    townshipName: string;
+  }> {
+    const [township] = await tx
+      .select({ id: townships.id, name: townships.name })
+      .from(townships)
+      .where(eq(townships.id, townshipId));
+    if (!township) {
+      throw new BadRequestException(`Township '${townshipId}' not found`);
+    }
+
+    await tx
+      .insert(townshipRotation)
+      .values({ townshipId })
+      .onConflictDoNothing();
+    const [rotation] = await tx
+      .select({ lastAssignedRiderId: townshipRotation.lastAssignedRiderId })
+      .from(townshipRotation)
+      .where(eq(townshipRotation.townshipId, townshipId))
+      .for('update');
+    if (!rotation) throw new ConflictException('Township rotation could not be locked');
+
+    const eligible = await tx
+      .select({
+        id: riders.id,
+        name: users.name,
+        phone: users.phone,
+      })
+      .from(riderTownships)
+      .innerJoin(riders, eq(riders.id, riderTownships.riderId))
+      .innerJoin(users, eq(users.id, riders.userId))
+      .innerJoin(roles, eq(roles.id, users.roleId))
+      .where(
+        and(
+          eq(riderTownships.townshipId, townshipId),
+          eq(users.status, 'ACTIVE'),
+          eq(roles.name, 'RIDER'),
+        ),
+      )
+      .orderBy(asc(riders.createdAt), asc(riders.id));
+
+    if (eligible.length === 0) {
+      throw new BadRequestException(
+        `Township '${township.name}' has no active rider; assign a rider before creating orders`,
+      );
+    }
+
+    const previousIndex = eligible.findIndex(
+      (rider) => rider.id === rotation.lastAssignedRiderId,
+    );
+    const nextIndex = (previousIndex + 1) % eligible.length;
+    return { rider: eligible[nextIndex], townshipName: township.name };
+  }
+
+  private async responsesForOrders(rows: OrderRow[]): Promise<OrderResponseDto[]> {
+    if (rows.length === 0) return [];
+    const orderIds = rows.map((row) => row.id);
+    const townshipIds = [...new Set(rows.map((row) => row.townshipId))];
+    const [assignmentRows, townshipRows] = await Promise.all([
+      this.database.db
+        .select({
+          orderId: deliveryAttempts.orderId,
+          riderId: riders.id,
+          riderName: users.name,
+          riderPhone: users.phone,
+        })
+        .from(deliveryAttempts)
+        .innerJoin(riders, eq(riders.id, deliveryAttempts.riderId))
+        .innerJoin(users, eq(users.id, riders.userId))
+        .where(inArray(deliveryAttempts.orderId, orderIds))
+        .orderBy(desc(deliveryAttempts.attemptNumber)),
+      this.database.db
+        .select({ id: townships.id, name: townships.name })
+        .from(townships)
+        .where(inArray(townships.id, townshipIds)),
+    ]);
+    const assignments = new Map<string, Omit<RiderAssignment, 'townshipName'>>();
+    for (const assignment of assignmentRows) {
+      if (!assignments.has(assignment.orderId)) {
+        assignments.set(assignment.orderId, {
+          riderId: assignment.riderId,
+          riderName: assignment.riderName,
+          riderPhone: assignment.riderPhone,
+        });
+      }
+    }
+    const names = new Map(townshipRows.map((township) => [township.id, township.name]));
+    return rows.map((row) => {
+      const assignment = assignments.get(row.id);
+      return toOrderResponse(
+        row,
+        assignment
+          ? { ...assignment, townshipName: names.get(row.townshipId) ?? '' }
+          : {
+              riderId: null,
+              riderName: null,
+              riderPhone: null,
+              townshipName: names.get(row.townshipId) ?? '',
+            },
+      );
+    });
   }
 
   private async orderOrThrow(id: string): Promise<OrderRow> {

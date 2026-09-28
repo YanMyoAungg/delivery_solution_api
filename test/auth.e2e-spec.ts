@@ -42,7 +42,7 @@ describe('Auth & Users (e2e)', () => {
         name: overrides.name ?? 'E2E Owner',
         email: overrides.email ?? `owner-${run}@e2e.local`,
         passwordHash:
-          overrides.passwordHash ?? (await hashPassword('owner1234')),
+          overrides.passwordHash ?? (await hashPassword('Password1234')),
         roleId,
         status: (overrides.status ?? 'ACTIVE') as 'ACTIVE',
       })
@@ -51,7 +51,7 @@ describe('Auth & Users (e2e)', () => {
     return row.id;
   }
 
-  async function login(email: string, password = 'owner1234') {
+  async function login(email: string, password = 'Password1234') {
     const response = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({ email, password });
@@ -88,7 +88,7 @@ describe('Auth & Users (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/login')
-        .send({ email, password: 'owner1234' })
+        .send({ email, password: 'Password1234' })
         .expect(200);
 
       expect(response.body.accessToken).toEqual(expect.any(String));
@@ -115,7 +115,7 @@ describe('Auth & Users (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/api/v1/auth/login')
-        .send({ email, password: 'owner1234' })
+        .send({ email, password: 'Password1234' })
         .expect(401);
     });
 
@@ -168,7 +168,7 @@ describe('Auth & Users (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/auth/change-password')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ currentPassword: 'owner1234', newPassword: 'newpassword1' })
+        .send({ currentPassword: 'Password1234', newPassword: 'newpassword1' })
         .expect(204);
 
       await request(app.getHttpServer())
@@ -178,7 +178,7 @@ describe('Auth & Users (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/api/v1/auth/login')
-        .send({ email, password: 'owner1234' })
+        .send({ email, password: 'Password1234' })
         .expect(401);
     });
 
@@ -190,7 +190,7 @@ describe('Auth & Users (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/auth/change-password')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ currentPassword: 'owner1234', newPassword: 'short' })
+        .send({ currentPassword: 'Password1234', newPassword: 'short' })
         .expect(400);
     });
   });
@@ -470,7 +470,7 @@ describe('Auth & Users (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/auth/change-password')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ currentPassword: 'owner1234', newPassword: 'newpassword1' })
+        .send({ currentPassword: 'Password1234', newPassword: 'newpassword1' })
         .expect(204);
 
       await request(app.getHttpServer())

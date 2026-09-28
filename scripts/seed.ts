@@ -48,9 +48,9 @@ function roleIdRequired(
 const GRANTS: Record<Exclude<SeedRoleName, 'OWNER'>, string[]> = {
   ADMIN: [...PERMISSION_KEYS],
   OFFICER: [
-    'pickups.create',
-    'pickups.read',
-    'pickups.update',
+    'orders.create',
+    'orders.read',
+    'orders.update',
     'deliveries.create',
     'deliveries.read',
     'deliveries.update',
@@ -135,7 +135,7 @@ async function main() {
       values (${OWNER_NAME}, ${OWNER_EMAIL}, ${passwordHash}, ${roleIdRequired(roleIds, 'OWNER')}, 'ACTIVE')
     `;
     console.log(
-      `Seeded OWNER: ${OWNER_NAME} <${OWNER_EMAIL}> (default password: ${OWNER_PASSWORD})`,
+      `Seeded OWNER: ${OWNER_NAME} <${OWNER_EMAIL}> (password: ${OWNER_PASSWORD})`,
     );
   } else {
     console.log(`OWNER already exists for ${OWNER_EMAIL}, skipping`);
@@ -160,7 +160,7 @@ async function main() {
       values (${admin.name}, ${normalized}, ${passwordHash}, ${roleIdRequired(roleIds, 'ADMIN')}, 'ACTIVE')
     `;
     console.log(
-      `Seeded ADMIN: ${admin.name} <${normalized}> (default password: ${OWNER_PASSWORD})`,
+      `Seeded ADMIN: ${admin.name} <${normalized}> (password: ${OWNER_PASSWORD})`,
     );
   }
 }

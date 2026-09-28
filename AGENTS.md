@@ -53,6 +53,7 @@ e2e requires `docker compose up -d` running (Postgres on host port 5433); it ins
 
 - `src/app.module.ts` registers global `APP_GUARD`s (JwtAuthGuard + PermissionsGuard): every route requires a `Bearer` JWT unless marked `@Public()`.
 - Protected routes declare `@RequirePermissions('x.y')`; the permission→roles entry must exist in `src/common/auth/permissions.ts` (fail closed for unknown keys).
+- Riders must **not** receive `orders.read`. Rider board/dashboard endpoints use `deliveries.read`, derive the rider from the JWT, and apply the documented option-B redaction. Office order/delivery history uses `orders.read`; office reassign uses `orders.update`.
 - Users not in any permission list are "authenticated only" — don't rely on that; annotate explicitly.
 - Never return `passwordHash` in any response. Auth is access-token only.
 
@@ -83,4 +84,9 @@ e2e requires `docker compose up -d` running (Postgres on host port 5433); it ins
 
 - `src/common/` — cross-cutting: `auth/` (global guards, decorators, seeded permission keys), `database/` (global Drizzle service), `health/` (public probe), `utils/password.util.ts`.
 - `src/auth/`, `src/users/` — Phase 1 modules (login/me/change-password; admin user CRUD).
-- Phases 2–5 (shops/customers/riders, orders, pickups, deliveries) are implemented under `src/<domain>/`. Phase 6 (returns + reconciliation) is domain-preflight blocked; notifications/Viber and reports remain later phases. The roadmap is at the bottom of README.md.
+- Phase 2 master data (`shops`, `customers`, `riders`) and Phase 3.5 (`townships`, orders, deliveries) are implemented under `src/<domain>/`. There is **no pickups module**: packages are collected outside the system, brought to the office, then entered by office staff.
+- `township_rotation` is a separate, per-township cursor table. Order creation locks its township row, auto-assigns the next ACTIVE rider covering that township, and atomically creates the `ASSIGNED` order plus its first delivery attempt/history. New assignment logic must preserve that transaction and lock.
+- Current `OrderStatus` and `DeliveryStatus` are exactly `ASSIGNED | DELIVERED | FAILED`. `FAILED → ASSIGNED` retry remains, capped at three attempts. There is no `PENDING`, `PICKED_UP`, `RECEIVED_AT_OFFICE`, `OUT_FOR_DELIVERY`, `RETURNED`, delivery `start` route, `STARTED` history event, or `startedAt` column. Do not restore any as a convenience state.
+- RIDER roles retain `deliveries.read` and `deliveries.update`, but not `orders.read` or office override permissions. `GET /rider/board` and `/rider/dashboard` are self-scoped by JWT; board option B returns full detail/attempt id only for the rider's own orders and redacted routing context for colleagues' orders. Office assignment/reassignment and history remain office operations.
+- `APP_TIMEZONE` defaults to `Asia/Yangon` and drives date-boundary calculations for rider board/dashboard. The daily custody/sign-out/return loop and 5-of-10 rule are **Phase 3.6 deferrals**, not represented in the current schema or statuses.
+- Phase 4 pickups are deleted outright. Phase 6 returns + reconciliation is domain-preflight blocked; notifications/Viber and reports remain later phases. The implementation roadmap is `PLAN.md`.

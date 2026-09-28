@@ -13,9 +13,9 @@ import type { PermissionKey } from '../src/common/auth/permission-keys.js';
 
 const ORIGINAL_OPERATIONAL_GRANTS = {
   OFFICER: [
-    'pickups.create',
-    'pickups.read',
-    'pickups.update',
+    'orders.create',
+    'orders.read',
+    'orders.update',
     'deliveries.create',
     'deliveries.read',
     'deliveries.update',
@@ -48,7 +48,7 @@ describe('Permissions & Roles (e2e)', () => {
       .values({
         name: `E2E ${roleName}`,
         email,
-        passwordHash: await hashPassword('owner1234'),
+        passwordHash: await hashPassword('Password1234'),
         roleId,
         status: 'ACTIVE',
       })
@@ -60,7 +60,7 @@ describe('Permissions & Roles (e2e)', () => {
   async function login(email: string) {
     const response = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email, password: 'owner1234' })
+      .send({ email, password: 'Password1234' })
       .expect(200);
     return response.body.accessToken as string;
   }
@@ -125,6 +125,7 @@ describe('Permissions & Roles (e2e)', () => {
       expect(response.body.length).toBeGreaterThan(0);
       const modules = response.body.map((g: { module: string }) => g.module);
       expect(modules).toContain('users');
+      expect(modules).not.toContain('pickups');
       const permissionsGroup = response.body.find(
         (g: { module: string }) => g.module === 'permissions',
       );

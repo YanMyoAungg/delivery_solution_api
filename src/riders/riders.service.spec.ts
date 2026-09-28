@@ -11,6 +11,12 @@ function baseRider(overrides: Record<string, unknown> = {}) {
     email: 'john.rider@delivery.local',
     phone: '09123456789',
     status: 'ACTIVE' as const,
+    vehicleType: 'BIKE' as const,
+    vehiclePlate: 'MDY-1234',
+    licenseNo: 'DL-2024-99812',
+    nrcNumber: '09987654321',
+    emergencyContactPhone: '09111111111',
+    notes: 'Prefers north townships',
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -21,6 +27,7 @@ function queryChain(result: unknown) {
   const chain = {
     from: vi.fn(),
     innerJoin: vi.fn(),
+    for: vi.fn(),
     where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
@@ -30,6 +37,7 @@ function queryChain(result: unknown) {
   };
   chain.from.mockReturnValue(chain);
   chain.innerJoin.mockReturnValue(chain);
+  chain.for.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
   chain.orderBy.mockReturnValue(chain);
   chain.limit.mockReturnValue(chain);
@@ -59,7 +67,10 @@ describe('RidersService', () => {
   it('lists riders with pagination metadata', async () => {
     const dataQuery = queryChain([baseRider()]);
     const countQuery = queryChain([{ count: 1 }]);
-    db.select.mockReturnValueOnce(dataQuery).mockReturnValueOnce(countQuery);
+    db.select
+      .mockReturnValueOnce(dataQuery)
+      .mockReturnValueOnce(countQuery)
+      .mockReturnValueOnce(queryChain([]));
 
     const result = await service.list({ page: 1, perPage: 20 });
 
@@ -98,7 +109,9 @@ describe('RidersService', () => {
       async (callback: (transaction: typeof tx) => Promise<string>) =>
         callback(tx),
     );
-    db.select.mockReturnValue(queryChain([baseRider()]));
+    db.select
+      .mockReturnValueOnce(queryChain([baseRider()]))
+      .mockReturnValueOnce(queryChain([]));
 
     const result = await service.create({
       name: ' John Rider ',
@@ -118,6 +131,12 @@ describe('RidersService', () => {
     );
     expect(riderInsert.values).toHaveBeenCalledWith({
       userId: baseRider().userId,
+      vehicleType: 'BIKE',
+      vehiclePlate: null,
+      licenseNo: null,
+      nrcNumber: null,
+      emergencyContactPhone: null,
+      notes: null,
     });
   });
 
@@ -146,8 +165,11 @@ describe('RidersService', () => {
 
   it('updates and deletes the rider account transactionally', async () => {
     const existing = baseRider();
-    db.select.mockReturnValueOnce(queryChain([existing]));
     const tx = {
+      select: vi
+        .fn()
+        .mockReturnValueOnce(queryChain([{ id: existing.riderId }]))
+        .mockReturnValueOnce(queryChain([])),
       update: vi.fn().mockReturnValue({
         set: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue(undefined),
@@ -161,7 +183,10 @@ describe('RidersService', () => {
       async (callback: (transaction: typeof tx) => Promise<void>) =>
         callback(tx),
     );
-    db.select.mockReturnValueOnce(queryChain([baseRider({ name: 'Updated' })]));
+    db.select
+      .mockReturnValueOnce(queryChain([existing]))
+      .mockReturnValueOnce(queryChain([baseRider({ name: 'Updated' })]))
+      .mockReturnValueOnce(queryChain([]));
 
     const updated = await service.update(existing.riderId, { name: 'Updated' });
     expect(updated.name).toBe('Updated');

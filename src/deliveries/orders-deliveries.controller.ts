@@ -27,7 +27,7 @@ export class OrdersDeliveriesController {
   constructor(private readonly deliveries: DeliveriesService) {}
 
   @Get(':orderId/deliveries')
-  @RequirePermissions('deliveries.read')
+  @RequirePermissions('orders.read')
   @ApiOkResponse({ type: DeliveryListResponseDto })
   list(
     @Param('orderId', ParseUUIDPipe) orderId: string,
