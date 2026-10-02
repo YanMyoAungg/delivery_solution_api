@@ -10,7 +10,7 @@ Check the table at the start of every task; if a row matches, invoke the skill b
 |---|---|
 | Any frontend/UI work (dashboards, forms, CRUD screens, components, layouts) | `ui-ux-pro-max` |
 | Landing/marketing pages, visual polish, aesthetic direction | `taste` (on top of `ui-ux-pro-max`) |
-| Charts, graphs, KPI tiles, data visualization | `dataviz` (before first chart line) |
+| Charts, graphs, KPI tiles, data visualization | `data-visualization` (before first visualization line) |
 | Logos, decks, icon sets, brand/social assets | `ui-ux-pro-max:design` |
 | Library/framework/SDK/CLI docs question | `ctx7` CLI (see `~/.claude/rules/context7.md`) |
 | Code review / quality pass on changes | `code-review` |
@@ -52,7 +52,7 @@ e2e requires `docker compose up -d` running (Postgres on host port 5433); it ins
 ## Auth / RBAC — affects every new route
 
 - `src/app.module.ts` registers global `APP_GUARD`s (JwtAuthGuard + PermissionsGuard): every route requires a `Bearer` JWT unless marked `@Public()`.
-- Protected routes declare `@RequirePermissions('x.y')`; the permission→roles entry must exist in `src/common/auth/permissions.ts` (fail closed for unknown keys).
+- Protected routes declare `@RequirePermissions('x.y')`; keys must exist in `src/common/auth/permission-keys.ts` and effective role grants come from the database/default grants in `scripts/seed.ts` (unknown keys fail closed).
 - Riders must **not** receive `orders.read`. Rider board/dashboard endpoints use `deliveries.read`, derive the rider from the JWT, and apply the documented option-B redaction. Office order/delivery history uses `orders.read`; office reassign uses `orders.update`.
 - Users not in any permission list are "authenticated only" — don't rely on that; annotate explicitly.
 - Never return `passwordHash` in any response. Auth is access-token only.
@@ -75,6 +75,7 @@ e2e requires `docker compose up -d` running (Postgres on host port 5433); it ins
   pnpm db:migrate
   ```
 - Inspect state with `docker exec d_api-postgres-1 psql -U delivery_user -d delivery_db -c "\dt"`.
+- Use `pnpm db:generate` for schema-diff migrations. For data-only/custom SQL migrations, create the file and journal entry with Drizzle Kit's custom generator (`pnpm run db:generate --custom --name <descriptive_name>`), then put the SQL into its generated file. Never hand-create migration files or edit `drizzle/meta/_journal.json` or snapshots. Keep custom data migrations idempotent where possible, and verify with `pnpm db:migrate` plus a follow-up `pnpm db:generate`.
 
 ## pnpm native-build approval
 
@@ -89,4 +90,6 @@ e2e requires `docker compose up -d` running (Postgres on host port 5433); it ins
 - Current `OrderStatus` and `DeliveryStatus` are exactly `ASSIGNED | DELIVERED | FAILED`. `FAILED → ASSIGNED` retry remains, capped at three attempts. There is no `PENDING`, `PICKED_UP`, `RECEIVED_AT_OFFICE`, `OUT_FOR_DELIVERY`, `RETURNED`, delivery `start` route, `STARTED` history event, or `startedAt` column. Do not restore any as a convenience state.
 - RIDER roles retain `deliveries.read` and `deliveries.update`, but not `orders.read` or office override permissions. `GET /rider/board` and `/rider/dashboard` are self-scoped by JWT; board option B returns full detail/attempt id only for the rider's own orders and redacted routing context for colleagues' orders. Office assignment/reassignment and history remain office operations.
 - `APP_TIMEZONE` defaults to `Asia/Yangon` and drives date-boundary calculations for rider board/dashboard. The daily custody/sign-out/return loop and 5-of-10 rule are **Phase 3.6 deferrals**, not represented in the current schema or statuses.
+- Office dashboard is implemented as a read-only aggregate API gated by `reports.read` (OWNER/ADMIN/OFFICER allowed; RIDER denied). Follow `PLAN.md` (“Office dashboard — first slice COMPLETE”) for metric/date semantics. Do not expose office-wide data to RIDER or label status-derived COD sums as collected/reconciled funds; no on-time or custody metrics are supported by current data.
+- When e2e tests modify role grants and restore shared-DB state, their restored OFFICER grant set must include `reports.read`; keep test cleanup aligned with the approved default role grants in `scripts/seed.ts`.
 - Phase 4 pickups are deleted outright. Phase 6 returns + reconciliation is domain-preflight blocked; notifications/Viber and reports remain later phases. The implementation roadmap is `PLAN.md`.

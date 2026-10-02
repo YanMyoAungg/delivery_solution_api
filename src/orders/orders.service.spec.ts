@@ -59,6 +59,10 @@ describe('OrdersService', () => {
       riderName: 'Rider One',
       riderPhone: '09123456789',
       townshipName: 'Hlaing',
+      customerName: 'Customer One',
+      customerPhone: '09987654321',
+      customerAddress: '12 Main Road',
+      shopName: 'Shop One',
     });
 
     expect(response).toMatchObject({
@@ -67,12 +71,16 @@ describe('OrdersService', () => {
       townshipName: 'Hlaing',
       riderName: 'Rider One',
       riderPhone: '09123456789',
+      customerName: 'Customer One',
+      customerPhone: '09987654321',
+      customerAddress: '12 Main Road',
+      shopName: 'Shop One',
     });
   });
 
   it('lists orders with pagination metadata and latest assignment', async () => {
     db.select
-      .mockReturnValueOnce(queryChain([baseOrder()]))
+      .mockReturnValueOnce(queryChain([{ orders: baseOrder() }]))
       .mockReturnValueOnce(queryChain([{ count: 1 }]))
       .mockReturnValueOnce(
         queryChain([
@@ -86,6 +94,19 @@ describe('OrdersService', () => {
       )
       .mockReturnValueOnce(
         queryChain([{ id: baseOrder().townshipId, name: 'Hlaing' }]),
+      )
+      .mockReturnValueOnce(
+        queryChain([
+          {
+            id: baseOrder().customerId,
+            name: 'Customer One',
+            phone: '09987654321',
+            address: '12 Main Road',
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        queryChain([{ id: baseOrder().shopId, name: 'Shop One' }]),
       );
 
     const result = await service.list({ page: 1, perPage: 20 });
@@ -95,6 +116,10 @@ describe('OrdersService', () => {
       townshipName: 'Hlaing',
       riderName: 'Rider One',
       deliveryFee: '0.00',
+      shopName: 'Shop One',
+      customerName: 'Customer One',
+      customerPhone: '09987654321',
+      customerAddress: '12 Main Road',
     });
     expect(result.meta).toEqual({
       page: 1,

@@ -19,6 +19,7 @@ const ORIGINAL_OPERATIONAL_GRANTS = {
     'deliveries.create',
     'deliveries.read',
     'deliveries.update',
+    'reports.read',
   ],
   RIDER: ['deliveries.read', 'deliveries.update'],
 } as const;

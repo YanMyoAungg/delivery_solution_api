@@ -11,8 +11,20 @@ export class OrderResponseDto {
   @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
   shopId: string;
 
+  @ApiProperty({ example: 'Township Shop' })
+  shopName: string;
+
   @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
   customerId: string;
+
+  @ApiProperty({ example: 'Township Customer' })
+  customerName: string;
+
+  @ApiPropertyOptional({ nullable: true, example: '09123456789' })
+  customerPhone: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 'No. 12 Main Road' })
+  customerAddress: string | null;
 
   @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
   townshipId: string;

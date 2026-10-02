@@ -16,7 +16,8 @@ Legend: ✅ done · phase-relative commit (migration + code + tests together).
 - **Phase 6 — Returns + Payment Reconciliation:** PREFLIGHT BLOCKED; implementation not authorized
 - **Phase 3.6 — Daily rider custody:** DEFERRED, not authorized. See §Phase 3.6.
 - **Phase 3.5 — Townships + round-robin:** COMPLETE (backend and frontend). Frontend contract/implementation record: `../d_frontend/BACKEND_PHASE_3_5_HANDOFF.md`.
-- **Next activity:** domain decisions only. Phase 6 remains preflight-blocked; Phase 3.6 daily custody remains deferred pending client decisions. Master-data reconciliation (Part A) is complete and applied as migration `0012`.
+- **Office dashboard first slice:** COMPLETE (read-only operational API and office frontend; `reports.read`, OWNER/ADMIN/OFFICER allowed, RIDER denied).
+- **Next activity:** Phase 6 remains preflight-blocked; Phase 3.6 daily custody remains deferred pending client decisions. Master-data reconciliation (Part A) is complete and applied as migration `0012`.
 
 Known project-state findings:
 
@@ -155,11 +156,40 @@ Daily operational messages to configured Viber groups **at admin-desired times**
 
 ---
 
+## Office dashboard — first slice COMPLETE
+
+The delivered office dashboard is a read-only operational view ahead of the broader Phase 8 reporting suite, not a financial reconciliation or performance-scoring system.
+
+- **Initial period:** today in `APP_TIMEZONE` (default `Asia/Yangon`), with an explicit calendar-date selector for viewing other individual days. Keep the selected day semantics consistent with rider dashboard dates; do not silently treat a local calendar day as UTC.
+- **Metrics:** orders created today; currently open (`ASSIGNED`) orders; delivery attempts delivered today; delivery attempts failed today; and delivered / (delivered + failed) success rate for attempts completed on that day (0 when no attempts were completed). Dated delivered/failed counts are attempts completed on the selected date (retries count as attempts); open assignments and failure attention are current order-level views.
+- **Open-work breakdown:** current assigned orders grouped by assigned rider and township, with counts. Use the latest delivery attempt per order for current rider/status; retries and reassignments must not inflate the open-order count.
+- **Recent activity:** a bounded, newest-first list of delivery events (assignment/reassignment, delivery, failure, retry), with order tracking code, township, rider, event, and timestamp. Include an actionable failed-order list so office staff can find failed orders requiring retry. Keep response size bounded and link to existing order detail/office operations.
+- **Data access:** the purpose-built aggregate endpoint avoids fetching paginated `/orders` and calculating global totals in the browser. It reuses existing schema/history and date-boundary helpers where their semantics match. The first slice adds no business tables; `pnpm db:generate` confirms there are no schema changes.
+- **Authorization (implemented):** existing `reports.read` gates `GET /api/v1/office/dashboard`. OWNER receives it through system-role behavior; ADMIN receives all fixed keys; OFFICER receives it through default seed grants and migration `0015_officer_reports_read.sql`. RIDER does not receive this endpoint or office-wide data; rider dashboard remains self-scoped under `deliveries.read`. No new permission key was added.
+- **No chart dependency for the first slice.** Return data shaped for summary values and compact grouped lists. Add a charting library only if follow-up use cases need time-series or comparative charts.
+
+### Current data limitations — do not imply unsupported facts
+
+- **COD collected/outstanding is not authoritative.** `codAmount` records the order amount, and there is no collection ledger or verified cash-handover event. A delivered status is not proof cash was collected. Do not label status-derived sums as cash collected, reconciled, or payable.
+- **No on-time or transit-time metric:** there is no promised delivery time, delivery-start timestamp, or equivalent service-level target.
+- **No custody/office-return metric:** rider sign-out/sign-in, returned-to-office custody, shifts/manifests, and the 5-of-10 rule remain deferred under Phase 3.6.
+- **No customer returns, payment reconciliation, refunds, or shop payout metrics:** Phase 6 remains preflight-blocked.
+- **No shop-by-township dimension:** township belongs to an order, not a shop.
+
+### Delivered implementation and verification
+
+- Backend: `GET /api/v1/office/dashboard?date=YYYY-MM-DD`, documented request/response DTOs, bounded activity/failed lists, current attempt/order aggregation, and timezone-aware calendar boundaries.
+- Frontend: `/dashboard` office route/navigation, date selection, summary values and operational lists; generated API types; no chart dependency.
+- Permission test cleanup restores the approved OFFICER `reports.read` grant so shared-DB e2e ordering cannot remove dashboard access.
+- Verified: backend lint/build/unit/e2e; OWNER and OFFICER allow plus RIDER denial in e2e; `pnpm db:generate` reports no schema changes. Permission-only grant migration `0015_officer_reports_read.sql` adds access for existing OFFICER roles.
+
+---
+
 ## Phase 8 — Reports
 
-Read-only aggregates, no new tables.
+Broader read-only reporting after the office dashboard first slice; no new tables expected for basic operational aggregates.
 
-- **Endpoints**: `/reports/daily` (created/assigned/delivered/failed per day), `/reports/cod-pending` (open COD by shop), `/reports/rider-performance`, `/reports/shop-performance`. Filterable by date range.
+- **Endpoints (proposals requiring metric review):** `/reports/daily` (created/assigned/delivered/failed per day), `/reports/cod-pending`, `/reports/rider-performance`, `/reports/shop-performance`. Filterable by date range. COD/payment reports are blocked until Phase 6 defines authoritative collection and reconciliation semantics. Rider/shop performance labels require an approved definition of “performance”; do not infer on-time rates or targets from current data.
 - **Permissions**: `reports.read` (OWNER/ADMIN/OFFICER).
 - Verify query performance with indexes on `order_status_history.created_at` / `orders.status`.
 

@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
 import { isUniqueViolation } from '../common/database/is-unique-violation.js';
 import { escapeLikeWildcards } from '../common/utils/normalize.util.js';
@@ -39,7 +39,17 @@ interface RiderAssignment {
   riderName: string | null;
   riderPhone: string | null;
   townshipName: string;
+  customerName: string;
+  customerPhone: string | null;
+  customerAddress: string | null;
+  shopName: string;
 }
+
+type OrderResponseContext = Omit<
+  RiderAssignment,
+  'riderId' | 'riderName' | 'riderPhone'
+>;
+type RiderDetails = Pick<RiderAssignment, 'riderId' | 'riderName' | 'riderPhone'>;
 
 export function toOrderResponse(
   row: OrderRow,
@@ -49,7 +59,11 @@ export function toOrderResponse(
     id: row.id,
     trackingCode: row.trackingCode,
     shopId: row.shopId,
+    shopName: assignment?.shopName ?? '',
     customerId: row.customerId,
+    customerName: assignment?.customerName ?? '',
+    customerPhone: assignment?.customerPhone ?? null,
+    customerAddress: assignment?.customerAddress ?? null,
     townshipId: row.townshipId,
     townshipName: assignment?.townshipName ?? '',
     riderId: assignment?.riderId ?? null,
@@ -90,7 +104,13 @@ export class OrdersService {
 
     if (query.search?.trim()) {
       const search = `%${escapeLikeWildcards(query.search.trim())}%`;
-      conditions.push(ilike(orders.trackingCode, search));
+      conditions.push(
+        or(
+          ilike(orders.trackingCode, search),
+          ilike(customers.name, search),
+          ilike(customers.phone, search),
+        ),
+      );
     }
     if (query.status) conditions.push(eq(orders.status, query.status));
     if (query.shopId) conditions.push(eq(orders.shopId, query.shopId));
@@ -99,10 +119,11 @@ export class OrdersService {
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [rows, countResult] = await Promise.all([
+    const [joinedRows, countResult] = await Promise.all([
       this.database.db
         .select()
         .from(orders)
+        .innerJoin(customers, eq(customers.id, orders.customerId))
         .where(where)
         .orderBy(desc(orders.createdAt))
         .limit(perPage)
@@ -110,9 +131,11 @@ export class OrdersService {
       this.database.db
         .select({ count: sql<number>`count(*)` })
         .from(orders)
+        .innerJoin(customers, eq(customers.id, orders.customerId))
         .where(where),
     ]);
 
+    const rows = joinedRows.map((row) => row.orders);
     const total = Number(countResult[0]?.count ?? 0);
     const data = await this.responsesForOrders(rows);
     return {
@@ -136,8 +159,10 @@ export class OrdersService {
     dto: CreateOrderDto,
     changedBy: string,
   ): Promise<OrderResponseDto> {
-    await this.assertShopExists(dto.shopId);
-    await this.assertCustomerExists(dto.customerId);
+    const [shop, customer] = await Promise.all([
+      this.assertShopExists(dto.shopId),
+      this.assertCustomerExists(dto.customerId),
+    ]);
 
     for (let attempt = 1; attempt <= MAX_TRACKING_CODE_ATTEMPTS; attempt++) {
       try {
@@ -195,6 +220,10 @@ export class OrdersService {
           riderName: created.rider.name,
           riderPhone: created.rider.phone,
           townshipName: created.townshipName,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          customerAddress: customer.address,
+          shopName: shop.name,
         });
       } catch (err) {
         const trackingCollision = isUniqueViolation(err);
@@ -288,7 +317,9 @@ export class OrdersService {
     if (rows.length === 0) return [];
     const orderIds = rows.map((row) => row.id);
     const townshipIds = [...new Set(rows.map((row) => row.townshipId))];
-    const [assignmentRows, townshipRows] = await Promise.all([
+    const customerIds = [...new Set(rows.map((row) => row.customerId))];
+    const shopIds = [...new Set(rows.map((row) => row.shopId))];
+    const [assignmentRows, townshipRows, customerRows, shopRows] = await Promise.all([
       this.database.db
         .select({
           orderId: deliveryAttempts.orderId,
@@ -305,8 +336,21 @@ export class OrdersService {
         .select({ id: townships.id, name: townships.name })
         .from(townships)
         .where(inArray(townships.id, townshipIds)),
+      this.database.db
+        .select({
+          id: customers.id,
+          name: customers.name,
+          phone: customers.phone,
+          address: customers.address,
+        })
+        .from(customers)
+        .where(inArray(customers.id, customerIds)),
+      this.database.db
+        .select({ id: shops.id, name: shops.name })
+        .from(shops)
+        .where(inArray(shops.id, shopIds)),
     ]);
-    const assignments = new Map<string, Omit<RiderAssignment, 'townshipName'>>();
+    const assignments = new Map<string, RiderDetails>();
     for (const assignment of assignmentRows) {
       if (!assignments.has(assignment.orderId)) {
         assignments.set(assignment.orderId, {
@@ -317,20 +361,40 @@ export class OrdersService {
       }
     }
     const names = new Map(townshipRows.map((township) => [township.id, township.name]));
+    const customerDetails = new Map(
+      customerRows.map((customer) => [customer.id, customer]),
+    );
+    const shopNames = new Map(shopRows.map((shop) => [shop.id, shop.name]));
     return rows.map((row) => {
       const assignment = assignments.get(row.id);
+      const customer = customerDetails.get(row.customerId);
       return toOrderResponse(
         row,
-        assignment
-          ? { ...assignment, townshipName: names.get(row.townshipId) ?? '' }
-          : {
-              riderId: null,
-              riderName: null,
-              riderPhone: null,
-              townshipName: names.get(row.townshipId) ?? '',
-            },
+        {
+          ...(assignment ?? {
+            riderId: null,
+            riderName: null,
+            riderPhone: null,
+          }),
+          ...this.orderResponseContext(row, names, customer, shopNames),
+        },
       );
     });
+  }
+
+  private orderResponseContext(
+    row: OrderRow,
+    townshipNames: Map<string, string>,
+    customer: { name: string; phone: string | null; address: string | null } | undefined,
+    shopNames: Map<string, string>,
+  ): OrderResponseContext {
+    return {
+      townshipName: townshipNames.get(row.townshipId) ?? '',
+      customerName: customer?.name ?? '',
+      customerPhone: customer?.phone ?? null,
+      customerAddress: customer?.address ?? null,
+      shopName: shopNames.get(row.shopId) ?? '',
+    };
   }
 
   private async orderOrThrow(id: string): Promise<OrderRow> {
@@ -342,21 +406,30 @@ export class OrdersService {
     return row;
   }
 
-  private async assertShopExists(shopId: string): Promise<void> {
+  private async assertShopExists(
+    shopId: string,
+  ): Promise<{ id: string; name: string }> {
     const shop = await this.database.db.query.shops.findFirst({
       where: eq(shops.id, shopId),
-      columns: { id: true },
+      columns: { id: true, name: true },
     });
     if (!shop) throw new BadRequestException(`Shop '${shopId}' not found`);
+    return shop;
   }
 
-  private async assertCustomerExists(customerId: string): Promise<void> {
+  private async assertCustomerExists(customerId: string): Promise<{
+    id: string;
+    name: string;
+    phone: string | null;
+    address: string | null;
+  }> {
     const customer = await this.database.db.query.customers.findFirst({
       where: eq(customers.id, customerId),
-      columns: { id: true },
+      columns: { id: true, name: true, phone: true, address: true },
     });
     if (!customer) {
       throw new BadRequestException(`Customer '${customerId}' not found`);
     }
+    return customer;
   }
 }

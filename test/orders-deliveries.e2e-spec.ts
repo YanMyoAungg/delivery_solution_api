@@ -27,6 +27,10 @@ interface CreatedOrder {
   status: string;
   riderId: string;
   riderName: string;
+  shopName: string;
+  customerName: string;
+  customerPhone: string | null;
+  customerAddress: string | null;
 }
 
 describe('Township orders and deliveries (e2e)', () => {
@@ -39,6 +43,7 @@ describe('Township orders and deliveries (e2e)', () => {
   let riderIds: string[] = [];
   let riderTokens: string[] = [];
   let outsiderToken: string;
+  let officerToken: string;
   const orderIds: string[] = [];
   const userIds: string[] = [];
   const run = Date.now();
@@ -89,6 +94,11 @@ describe('Township orders and deliveries (e2e)', () => {
       columns: { id: true },
     });
     if (!ownerRole || !riderRole) throw new Error('Required roles are missing');
+    const officerRole = await database.db.query.roles.findFirst({
+      where: eq(roles.name, 'OFFICER'),
+      columns: { id: true },
+    });
+    if (!officerRole) throw new Error('OFFICER role is missing');
 
     const ownerEmail = `township-owner-${run}@e2e.local`;
     const [owner] = await database.db
@@ -103,6 +113,20 @@ describe('Township orders and deliveries (e2e)', () => {
       .returning({ id: users.id });
     userIds.push(owner.id);
     ownerToken = await login(ownerEmail, 'Password1234');
+
+    const officerEmail = `township-officer-${run}@e2e.local`;
+    const [officer] = await database.db
+      .insert(users)
+      .values({
+        name: 'Township E2E Officer',
+        email: officerEmail,
+        passwordHash: await hashPassword('Password1234'),
+        roleId: officerRole.id,
+        status: 'ACTIVE',
+      })
+      .returning({ id: users.id });
+    userIds.push(officer.id);
+    officerToken = await login(officerEmail, 'Password1234');
 
     const township = await request(app.getHttpServer())
       .post('/api/v1/townships')
@@ -231,6 +255,12 @@ describe('Township orders and deliveries (e2e)', () => {
     expect(first.riderId).toBe(third.riderId);
     expect(second.riderId).toBe(fourth.riderId);
     expect(first.riderName).toContain('Township Rider');
+    expect(first).toMatchObject({
+      shopName: `Township Shop ${run}`,
+      customerName: `Township Customer ${run}`,
+      customerPhone: '09123456789',
+      customerAddress: 'No. 12 Main Road',
+    });
 
     const parallelOrders = await Promise.all([createOrder(), createOrder()]);
     expect(parallelOrders[0].riderId).not.toBe(parallelOrders[1].riderId);
@@ -244,7 +274,21 @@ describe('Township orders and deliveries (e2e)', () => {
       townshipName: `Township ${run}`,
       riderId: first.riderId,
       riderName: first.riderName,
+      shopName: `Township Shop ${run}`,
+      customerName: `Township Customer ${run}`,
+      customerPhone: '09123456789',
+      customerAddress: 'No. 12 Main Road',
     });
+
+    const searchedByPhone = await request(app.getHttpServer())
+      .get('/api/v1/orders?search=0912')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(
+      (searchedByPhone.body.data as Array<{ id: string }>).some(
+        (order) => order.id === first.id,
+      ),
+    ).toBe(true);
   });
 
   it('rejects order creation without a township or an active covered rider', async () => {
@@ -431,5 +475,41 @@ describe('Township orders and deliveries (e2e)', () => {
     expect(
       response.body.assigned + response.body.delivered + response.body.failed,
     ).toBeGreaterThan(0);
+  });
+
+  it('allows office reports dashboard access and denies it to riders', async () => {
+    const office = await request(app.getHttpServer())
+      .get('/api/v1/office/dashboard')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(office.body).toMatchObject({
+      date: expect.any(String),
+      summary: {
+        ordersCreated: expect.any(Number),
+        openAssignments: expect.any(Number),
+        delivered: expect.any(Number),
+        failed: expect.any(Number),
+        successRate: expect.any(Number),
+      },
+      openWork: expect.any(Array),
+      recentActivity: expect.any(Array),
+      failedOrders: expect.any(Array),
+    });
+
+    const selectedDate = await request(app.getHttpServer())
+      .get('/api/v1/office/dashboard?date=2026-01-01')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(selectedDate.body.date).toBe('2026-01-01');
+
+    await request(app.getHttpServer())
+      .get('/api/v1/office/dashboard')
+      .set('Authorization', `Bearer ${officerToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/office/dashboard')
+      .set('Authorization', `Bearer ${riderTokens[0]}`)
+      .expect(403);
   });
 });

@@ -27,7 +27,9 @@ export class ListOrdersQueryDto {
   @Max(100)
   perPage?: number = 20;
 
-  @ApiPropertyOptional({ description: 'Search by exact/partial tracking code' })
+  @ApiPropertyOptional({
+    description: 'Search by tracking code, customer name, or customer phone',
+  })
   @IsOptional()
   @IsString()
   search?: string;

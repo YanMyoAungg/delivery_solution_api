@@ -6,24 +6,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NestJS 12 (Express) + TypeScript API for a single delivery company's operations: shops, customers, riders, townships, orders, and deliveries. Packages are collected outside the system and entered by office staff after arriving at the office; there is no pickup module. Postgres 18/Drizzle ORM, Redis (future jobs), Swagger, Vitest. Single package, pnpm workspaces, ESM under `nodenext`. Only commit/push when the user explicitly asks.
 
-Phase status (roadmap in `README.md` / `PLAN.md`): Foundation ✅, Phase 1 (Users/Auth/RBAC) ✅, Phase 2 master data ✅, Phase 3.5 townships/round-robin/rider board ✅. Phase 4 pickups are deleted. Phase 5 delivery operations are partial; Phase 3.6 daily custody is deferred; Phase 6 returns/COD/reconciliation is domain-preflight blocked. Notifications and reports remain later phases.
+Phase status (roadmap in `PLAN.md`): Foundation ✅, Phase 1 (Users/Auth/RBAC) ✅, Phase 2 master data ✅, Phase 3.5 townships/round-robin/rider board ✅, office dashboard first slice ✅. Phase 4 pickups are deleted. Phase 5 delivery operations are partial; Phase 3.6 daily custody is deferred; Phase 6 returns/COD/reconciliation is domain-preflight blocked. Notifications and broader reports remain later phases.
 
 **Current delivery invariants:** office creates an order only after the package reaches the office. `POST /orders` requires a township and transactionally assigns an ACTIVE rider covering it using the separate, per-township `township_rotation` cursor. Order and delivery statuses are exactly `ASSIGNED | DELIVERED | FAILED`; rider completion/failure acts directly from `ASSIGNED`. `FAILED → ASSIGNED` retry remains capped at three attempts. Do not restore `PENDING`, `PICKED_UP`, `RECEIVED_AT_OFFICE`, `OUT_FOR_DELIVERY`, `RETURNED`, a start route/event, or `startedAt` as convenience states.
 
 **Rider security:** riders use `GET /rider/board` and `/rider/dashboard`, self-scoped from JWT with `deliveries.read`. The board shows own orders in full and colleagues' township orders with option-B redaction. Riders must not have `orders.read`; office order/history uses `orders.read`, and office reassign uses `orders.update`. `APP_TIMEZONE` defaults to `Asia/Yangon` and drives rider date boundaries. Shift/custody-return and the 5-of-10 rule are not represented in the current schema.
 
+**Office dashboard:** `GET /api/v1/office/dashboard` is a read-only aggregate gated by `reports.read` for OWNER/ADMIN/OFFICER; RIDER is denied. Follow `PLAN.md` for selected-date attempt metrics and current open-work semantics. COD status sums are not verified collections; on-time and custody metrics are unsupported by current data.
+
 ## Skills — invoke before task-specific code
 
 Check this table at the start of every task; if a row matches, invoke the skill **before** writing code. Multiple can apply; each applies regardless of change size.
 
-| Task touches | Invoke |
-|---|---|
-| Any frontend/UI work (dashboards, forms, CRUD screens, components, responsive layout) | `ui-ux-pro-max` |
-| Landing/marketing pages, visual polish, aesthetic direction, redesigns | `taste` (aesthetic, on top of `ui-ux-pro-max`) |
-| Charts, graphs, KPI tiles, data visualization, analytics dashboards | `dataviz` (before first chart line) |
-| Logos, banners, pitch decks, icon sets, brand/social assets | `ui-ux-pro-max:design` |
-| Library/framework/SDK/CLI docs question | `ctx7` CLI (see `~/.claude/rules/context7.md`) |
-| Code review / quality pass on changes | `code-review` |
+| Task touches                                                                          | Invoke                                         |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Any frontend/UI work (dashboards, forms, CRUD screens, components, responsive layout) | `ui-ux-pro-max`                                |
+| Landing/marketing pages, visual polish, aesthetic direction, redesigns                | `taste` (aesthetic, on top of `ui-ux-pro-max`) |
+| Charts, graphs, KPI tiles, data visualization, analytics dashboards                   | `dataviz` (before first chart line)            |
+| Logos, banners, pitch decks, icon sets, brand/social assets                           | `ui-ux-pro-max:design`                         |
+| Library/framework/SDK/CLI docs question                                               | `ctx7` CLI (see `~/.claude/rules/context7.md`) |
+| Code review / quality pass on changes                                                 | `code-review`                                  |
 
 Utility-only work (pure API/backend/config) → no frontend skill needed. If unsure, invoke — an unneeded skill costs little.
 
@@ -42,7 +44,7 @@ When a meaningful, durable change lands — API contract (endpoints, DTO shapes,
 - `.claude/agents/*.md` — if an agent's instructions reference the changed behavior.
 - Persistent memory (`~/.claude/projects/.../memory/`) — non-obvious decisions/facts a later session can't derive from code or git history.
 
-Skip trivial edits (typos, formatting, one-off fixes). Test: *would a fresh session — or the frontend team — act on stale info because I didn't update it?* If yes, update.
+Skip trivial edits (typos, formatting, one-off fixes). Test: _would a fresh session — or the frontend team — act on stale info because I didn't update it?_ If yes, update.
 
 ## Naming conventions (mandatory)
 
@@ -81,6 +83,7 @@ Database scripts:
 
 ```bash
 pnpm db:generate   # Drizzle migration from schemas
+pnpm run db:generate --custom --name <descriptive_name> # custom SQL/data-only migration scaffold
 pnpm db:migrate    # apply migrations
 pnpm db:seed       # idempotent seed (OWNER + 2 admins; SEED_OWNER_* env override)
 pnpm db:studio     # Drizzle Studio
@@ -93,7 +96,7 @@ e2e requires `docker compose up -d` (Postgres publishes on host port from `DB_PO
 
 - `.env` (gitignored) intentionally differs from `.env.example`: local Postgres publishes on host port **5433**, the example uses **5432**. Never overwrite `.env` from `.env.example`. If local Postgres already uses 5432, set `DB_PORT`/`DATABASE_URL` to 5433 in `.env`.
 - App never reads `process.env` directly — everything flows through `@nestjs/config` validated in `src/config/env.validation.ts` (fails boot if `DATABASE_URL` or `JWT_SECRET` missing). `drizzle.config.ts` reads `DATABASE_URL` itself.
-- `.env.local` is loaded *before* `.env` (both read by ConfigModule and drizzle).
+- `.env.local` is loaded _before_ `.env` (both read by ConfigModule and drizzle).
 
 ## Architecture
 
@@ -101,7 +104,7 @@ e2e requires `docker compose up -d` (Postgres publishes on host port from `DB_PO
 - **`src/app.module.ts`** registers two global guards (`APP_GUARD` order matters): `JwtAuthGuard` then `PermissionsGuard`. Every route requires a `Bearer` JWT unless marked `@Public()`.
 - **`src/common/`** — cross-cutting infra shared by all domains:
   - `database/` — global Drizzle/Postgres `DatabaseService`; `schema.ts` is the central re-export point and the ONLY schema imports `db:generate` sees.
-  - `auth/` — global guards, decorators (`@Public()`, `@RequirePermissions()`, `@CurrentUser()`), and `permissions.ts` (permission→roles matrix).
+  - `auth/` — global guards, decorators (`@Public()`, `@RequirePermissions()`, `@CurrentUser()`), and `permission-keys.ts` (fixed permission catalog); effective role grants are stored in `role_permissions` and default grants are seeded in `scripts/seed.ts`.
   - `health/` — public probe (`GET /api/v1/health`).
 - **Feature modules** (`src/auth/`, `src/users/`, `src/shops/`, `src/customers/`, `src/riders/`, `src/townships/`, `src/orders/`, `src/deliveries/`) each own controller/service/DTOs plus any domain schema/module files.
 
@@ -128,6 +131,7 @@ e2e requires `docker compose up -d` (Postgres publishes on host port from `DB_PO
   pnpm db:migrate
   ```
 - Inspect state: `docker exec d_api-postgres-1 psql -U delivery_user -d delivery_db -c "\dt"`.
+- Use `pnpm db:generate` for schema-diff migrations. For data-only/custom SQL changes (which do not alter `schema.ts`), generate the migration scaffold and journal/snapshot with `pnpm run db:generate --custom --name <descriptive_name>`, then write the SQL into that generated file. Never hand-create migration files or edit `drizzle/meta/_journal.json` or snapshots. Prefer idempotent data migrations and verify with `pnpm db:migrate` followed by `pnpm db:generate`.
 
 ## pnpm native-build approval
 

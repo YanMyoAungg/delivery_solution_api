@@ -54,6 +54,7 @@ const GRANTS: Record<Exclude<SeedRoleName, 'OWNER'>, string[]> = {
     'deliveries.create',
     'deliveries.read',
     'deliveries.update',
+    'reports.read',
   ],
   RIDER: ['deliveries.read', 'deliveries.update'],
 };
