@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD CONSTRAINT "orders_partner_way_consistency_check" CHECK ("orders"."assignee_type" is distinct from 'PARTNER' or "orders"."way_id" is null);

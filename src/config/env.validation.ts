@@ -9,6 +9,7 @@ export interface EnvironmentVariables {
   DB_PASSWORD: string;
   JWT_SECRET: string;
   JWT_EXPIRES_IN: string;
+  APP_TIMEZONE: string;
   REDIS_HOST: string;
   REDIS_PORT: number;
   VIBER_BOT_TOKEN: string;
@@ -38,6 +39,7 @@ export function envValidation(
     DB_PASSWORD: env.DB_PASSWORD ?? 'delivery_pass',
     JWT_SECRET: env.JWT_SECRET!,
     JWT_EXPIRES_IN: env.JWT_EXPIRES_IN ?? '1h',
+    APP_TIMEZONE: env.APP_TIMEZONE ?? 'Asia/Yangon',
     REDIS_HOST: env.REDIS_HOST ?? 'localhost',
     REDIS_PORT: Number(env.REDIS_PORT ?? 6379),
     VIBER_BOT_TOKEN: env.VIBER_BOT_TOKEN ?? '',

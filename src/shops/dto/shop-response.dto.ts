@@ -13,6 +13,9 @@ export class ShopResponseDto {
   @ApiPropertyOptional({ example: 'No. 1, Main Road', nullable: true })
   address: string | null;
 
+  @ApiProperty({ example: false })
+  hasLogin: boolean;
+
   @ApiProperty({ example: '2026-09-18T10:00:00.000Z' })
   createdAt: string;
 

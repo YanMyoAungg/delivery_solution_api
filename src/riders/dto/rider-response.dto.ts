@@ -20,6 +20,9 @@ export class RiderResponseDto {
   @ApiProperty({ enum: USER_STATUSES, enumName: 'UserStatus' })
   status: UserStatus;
 
+  @ApiPropertyOptional({ example: '600.00', nullable: true })
+  commissionPerWayOverride: string | null;
+
   @ApiProperty({ example: '2026-09-18T10:00:00.000Z' })
   createdAt: string;
 

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
@@ -10,6 +11,9 @@ import {
   Min,
 } from 'class-validator';
 import { ORDER_STATUSES, type OrderStatus } from '../order.schema.js';
+
+export const ORDER_DATE_BASES = ['ENTRY', 'DELIVERED'] as const;
+export type OrderDateBasis = (typeof ORDER_DATE_BASES)[number];
 
 export class ListOrdersQueryDto {
   @ApiPropertyOptional({ example: 1, default: 1, minimum: 1 })
@@ -27,7 +31,7 @@ export class ListOrdersQueryDto {
   @Max(100)
   perPage?: number = 20;
 
-  @ApiPropertyOptional({ description: 'Search by exact/partial tracking code' })
+  @ApiPropertyOptional({ description: 'Search by tracking code, customer name, phone, or delivery address' })
   @IsOptional()
   @IsString()
   search?: string;
@@ -41,6 +45,31 @@ export class ListOrdersQueryDto {
   @IsOptional()
   @IsUUID()
   shopId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by township id' })
+  @IsOptional()
+  @IsUUID()
+  townshipId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by rider or partner id' })
+  @IsOptional()
+  @IsUUID()
+  assigneeId?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-01' })
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-31' })
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
+
+  @ApiPropertyOptional({ enum: ORDER_DATE_BASES, default: 'ENTRY' })
+  @IsOptional()
+  @IsEnum(ORDER_DATE_BASES)
+  dateBasis?: OrderDateBasis = 'ENTRY';
 
   @ApiPropertyOptional({ description: 'Filter by customer id' })
   @IsOptional()

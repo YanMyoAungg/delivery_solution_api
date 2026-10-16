@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DatabaseService } from '../common/database/database.service.js';
 import { RidersService } from './riders.service.js';
+import { PermissionService } from '../permissions/permissions.service.js';
 
 function baseRider(overrides: Record<string, unknown> = {}) {
   return {
@@ -11,6 +12,7 @@ function baseRider(overrides: Record<string, unknown> = {}) {
     email: 'john.rider@delivery.local',
     phone: '09123456789',
     status: 'ACTIVE' as const,
+    commissionPerWayOverride: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -47,11 +49,16 @@ describe('RidersService', () => {
     transaction: vi.fn(),
   };
   const database = { db };
+  const permissions = { getEffectivePermissions: vi.fn().mockResolvedValue([]) };
 
   beforeEach(async () => {
     vi.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
-      providers: [RidersService, { provide: DatabaseService, useValue: database }],
+      providers: [
+        RidersService,
+        { provide: DatabaseService, useValue: database },
+        { provide: PermissionService, useValue: permissions },
+      ],
     }).compile();
     service = moduleRef.get(RidersService);
   });
@@ -163,7 +170,7 @@ describe('RidersService', () => {
     );
     db.select.mockReturnValueOnce(queryChain([baseRider({ name: 'Updated' })]));
 
-    const updated = await service.update(existing.riderId, { name: 'Updated' });
+    const updated = await service.update(existing.riderId, { name: 'Updated' }, 'role-1');
     expect(updated.name).toBe('Updated');
 
     db.select.mockReturnValueOnce(queryChain([existing]));

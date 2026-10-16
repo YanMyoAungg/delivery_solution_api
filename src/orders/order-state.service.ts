@@ -3,39 +3,58 @@ import {
   ConflictException,
   Injectable,
 } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, type SQL } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
 import { orderStatusHistory } from './order-status-history.schema.js';
-import { orders, type OrderStatus } from './order.schema.js';
+import {
+  orders,
+  type AssigneeSnapshot,
+  type OrderStatus,
+} from './order.schema.js';
 
 type OrderStateExecutor = Pick<
   typeof DatabaseService.prototype.db,
   'update' | 'insert'
 >;
 
-/**
- * Allowed order-status transitions derived from the Phase 3 roadmap:
- * PENDING → PICKED_UP → RECEIVED_AT_OFFICE → ASSIGNED → OUT_FOR_DELIVERY
- * → DELIVERED | FAILED | RETURNED, plus the documented FAILED → ASSIGNED
- * retry edge used by the delivery attempt ledger.
- */
+type OrderTransitionUpdates = Partial<
+  Pick<
+    typeof orders.$inferInsert,
+    | 'assigneeType'
+    | 'riderId'
+    | 'partnerId'
+    | 'wayId'
+    | 'deliveredAt'
+    | 'cancelReason'
+  >
+>;
+
 const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
-  PENDING: ['PICKED_UP'],
-  PICKED_UP: ['RECEIVED_AT_OFFICE'],
-  RECEIVED_AT_OFFICE: ['ASSIGNED'],
-  ASSIGNED: ['OUT_FOR_DELIVERY'],
-  OUT_FOR_DELIVERY: ['DELIVERED', 'FAILED', 'RETURNED'],
-  FAILED: ['ASSIGNED'],
+  PENDING: ['ASSIGNED', 'CANCELLED', 'RETURNED'],
+  ASSIGNED: [
+    'PENDING',
+    'ASSIGNED',
+    'AWAITING_APPROVAL',
+    'CANCELLED',
+    'RETURNED',
+  ],
+  AWAITING_APPROVAL: ['DELIVERED', 'ASSIGNED'],
   DELIVERED: [],
   RETURNED: [],
+  CANCELLED: [],
 };
 
-export interface ApplyTransitionParams {
+export interface ApplyTransitionParameters {
   orderId: string;
   fromStatus: OrderStatus;
   toStatus: OrderStatus;
   changedBy: string;
   note?: string;
+  reason?: string;
+  internalNote?: string;
+  previousAssignee?: AssigneeSnapshot | null;
+  newAssignee?: AssigneeSnapshot | null;
+  updates?: OrderTransitionUpdates;
 }
 
 @Injectable()
@@ -44,6 +63,26 @@ export class OrderStateService {
 
   getAllowedTransitions(status: OrderStatus): readonly OrderStatus[] {
     return ALLOWED_TRANSITIONS[status];
+  }
+
+  async recordInitialStateInTransaction(
+    transaction: OrderStateExecutor,
+    parameters: {
+      orderId: string;
+      toStatus: OrderStatus;
+      changedBy: string;
+      newAssignee?: AssigneeSnapshot | null;
+    },
+  ): Promise<void> {
+    await transaction.insert(orderStatusHistory).values({
+      orderId: parameters.orderId,
+      fromStatus: null,
+      toStatus: parameters.toStatus,
+      changedBy: parameters.changedBy,
+      note: 'Order registered',
+      previousAssignee: null,
+      newAssignee: parameters.newAssignee ?? null,
+    });
   }
 
   canTransition(fromStatus: OrderStatus, toStatus: OrderStatus): boolean {
@@ -63,42 +102,106 @@ export class OrderStateService {
    * update is guarded by the expected current status so concurrent writers
    * cannot double-apply a transition.
    */
-  async applyTransition(params: ApplyTransitionParams): Promise<void> {
-    this.assertTransition(params.fromStatus, params.toStatus);
-    await this.database.db.transaction(async (tx) => {
-      await this.applyTransitionInTransaction(tx, params);
+  async applyTransition(parameters: ApplyTransitionParameters): Promise<void> {
+    this.assertTransition(parameters.fromStatus, parameters.toStatus);
+    await this.database.db.transaction(async (transaction) => {
+      await this.applyTransitionInTransaction(transaction, parameters);
     });
   }
 
   async applyTransitionInTransaction(
-    tx: OrderStateExecutor,
-    params: ApplyTransitionParams,
+    transaction: OrderStateExecutor,
+    parameters: ApplyTransitionParameters,
   ): Promise<void> {
-    this.assertTransition(params.fromStatus, params.toStatus);
+    this.assertTransition(parameters.fromStatus, parameters.toStatus);
 
-    const updated = await tx
+    await this.transitionInTransaction(transaction, parameters);
+  }
+
+  async markPartnerDeliveredInTransaction(
+    transaction: OrderStateExecutor,
+    orderId: string,
+    changedBy: string,
+    deliveredAt: Date,
+  ): Promise<void> {
+    await this.transitionInTransaction(
+      transaction,
+      {
+        orderId,
+        fromStatus: 'ASSIGNED',
+        toStatus: 'DELIVERED',
+        changedBy,
+        note: 'Partner order marked delivered by office',
+        updates: { deliveredAt },
+      },
+      eq(orders.assigneeType, 'PARTNER'),
+    );
+  }
+
+  async submitRiderDeliveredInTransaction(
+    transaction: OrderStateExecutor,
+    orderId: string,
+    riderId: string,
+    changedBy: string,
+    deliveredAt: Date,
+  ): Promise<void> {
+    await this.transitionInTransaction(
+      transaction,
+      {
+        orderId,
+        fromStatus: 'ASSIGNED',
+        toStatus: 'AWAITING_APPROVAL',
+        changedBy,
+        note: 'Rider submitted delivery for approval',
+        updates: { deliveredAt },
+      },
+      and(eq(orders.assigneeType, 'RIDER'), eq(orders.riderId, riderId)),
+    );
+  }
+
+  private async transitionInTransaction(
+    transaction: OrderStateExecutor,
+    parameters: ApplyTransitionParameters,
+    additionalGuard?: SQL,
+  ): Promise<void> {
+    if (
+      !(parameters.fromStatus === 'ASSIGNED' && parameters.toStatus === 'DELIVERED')
+    ) {
+      this.assertTransition(parameters.fromStatus, parameters.toStatus);
+    }
+
+    const updated = await transaction
       .update(orders)
-      .set({ status: params.toStatus, updatedAt: new Date() })
+      .set({
+        ...parameters.updates,
+        status: parameters.toStatus,
+        updatedAt: new Date(),
+      })
       .where(
         and(
-          eq(orders.id, params.orderId),
-          eq(orders.status, params.fromStatus),
+          eq(orders.id, parameters.orderId),
+          eq(orders.status, parameters.fromStatus),
+          additionalGuard,
         ),
       )
       .returning({ id: orders.id });
 
     if (updated.length === 0) {
       throw new ConflictException(
-        `Order '${params.orderId}' is not in status '${params.fromStatus}'`,
+        `Order '${parameters.orderId}' is not in status '${parameters.fromStatus}'`,
       );
     }
 
-    await tx.insert(orderStatusHistory).values({
-      orderId: params.orderId,
-      fromStatus: params.fromStatus,
-      toStatus: params.toStatus,
-      changedBy: params.changedBy,
-      note: params.note ?? null,
+    await transaction.insert(orderStatusHistory).values({
+      orderId: parameters.orderId,
+      fromStatus: parameters.fromStatus,
+      toStatus: parameters.toStatus,
+      changedBy: parameters.changedBy,
+      note: parameters.note ?? null,
+      reason: parameters.reason ?? null,
+      internalNote: parameters.internalNote ?? null,
+      previousAssignee: parameters.previousAssignee ?? null,
+      newAssignee: parameters.newAssignee ?? null,
     });
   }
 }

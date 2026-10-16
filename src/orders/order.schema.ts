@@ -1,5 +1,8 @@
 import {
+  check,
+  date,
   index,
+  boolean,
   jsonb,
   numeric,
   pgEnum,
@@ -9,22 +12,36 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { customers } from '../customers/customer.schema.js';
+import { deliveryPartners } from '../delivery-partners/delivery-partner.schema.js';
+import { riders } from '../riders/rider.schema.js';
 import { shops } from '../shops/shop.schema.js';
+import { townships } from '../townships/township.schema.js';
+import { ways } from '../ways/way.schema.js';
 
 export const ORDER_STATUSES = [
   'PENDING',
-  'PICKED_UP',
-  'RECEIVED_AT_OFFICE',
   'ASSIGNED',
-  'OUT_FOR_DELIVERY',
+  'AWAITING_APPROVAL',
   'DELIVERED',
-  'FAILED',
   'RETURNED',
+  'CANCELLED',
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const orderStatusEnum = pgEnum('order_status', ORDER_STATUSES);
+
+export const ASSIGNEE_TYPES = ['RIDER', 'PARTNER'] as const;
+export type AssigneeType = (typeof ASSIGNEE_TYPES)[number];
+
+export const assigneeTypeEnum = pgEnum('assignee_type', ASSIGNEE_TYPES);
+
+export interface AssigneeSnapshot {
+  type: AssigneeType;
+  riderId: string | null;
+  partnerId: string | null;
+}
 
 export const orders = pgTable(
   'orders',
@@ -37,13 +54,39 @@ export const orders = pgTable(
     customerId: uuid('customer_id')
       .notNull()
       .references(() => customers.id, { onDelete: 'restrict' }),
+    townshipId: uuid('township_id').references(() => townships.id, {
+      onDelete: 'restrict',
+    }),
+    assigneeType: assigneeTypeEnum('assignee_type'),
+    riderId: uuid('rider_id').references(() => riders.id, {
+      onDelete: 'restrict',
+    }),
+    partnerId: uuid('partner_id').references(() => deliveryPartners.id, {
+      onDelete: 'restrict',
+    }),
+    partnerTrackingNo: text('partner_tracking_no'),
     packageInfo: jsonb('package_info'),
+    packagePrice: numeric('package_price', { precision: 12, scale: 2 })
+      .notNull()
+      .default('0'),
     deliveryFee: numeric('delivery_fee', { precision: 12, scale: 2 })
       .notNull()
       .default('0'),
     codAmount: numeric('cod_amount', { precision: 12, scale: 2 })
       .notNull()
       .default('0'),
+    isPackagePaidToShop: boolean('is_package_paid_to_shop')
+      .notNull()
+      .default(false),
+    isFeePaidToShop: boolean('is_fee_paid_to_shop').notNull().default(false),
+    partnerFee: numeric('partner_fee', { precision: 12, scale: 2 })
+      .notNull()
+      .default('0'),
+    estimatedDeliveryDate: date('estimated_delivery_date', { mode: 'date' }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    wayId: uuid('way_id').references(() => ways.id, { onDelete: 'set null' }),
+    deliveryAddress: text('delivery_address'),
+    cancelReason: text('cancel_reason'),
     status: orderStatusEnum('status').notNull().default('PENDING'),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true })
@@ -54,11 +97,22 @@ export const orders = pgTable(
       .defaultNow(),
   },
   (table) => [
+    check(
+      'orders_assignee_consistency_check',
+      sql`coalesce(((${table.assigneeType} is null and ${table.riderId} is null and ${table.partnerId} is null) or (${table.assigneeType} = 'RIDER' and ${table.riderId} is not null and ${table.partnerId} is null) or (${table.assigneeType} = 'PARTNER' and ${table.partnerId} is not null and ${table.riderId} is null)), false)`,
+    ),
+    check(
+      'orders_partner_way_consistency_check',
+      sql`${table.assigneeType} is distinct from 'PARTNER' or ${table.wayId} is null`,
+    ),
     uniqueIndex('orders_tracking_code_unique').on(table.trackingCode),
     index('orders_status_idx').on(table.status),
     index('orders_shop_idx').on(table.shopId),
     index('orders_customer_idx').on(table.customerId),
     index('orders_created_at_idx').on(table.createdAt),
     index('orders_status_created_at_idx').on(table.status, table.createdAt),
+    index('orders_delivered_at_idx').on(table.deliveredAt),
+    index('orders_township_idx').on(table.townshipId),
+    index('orders_rider_idx').on(table.riderId),
   ],
 );

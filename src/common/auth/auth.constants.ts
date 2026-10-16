@@ -6,6 +6,7 @@ export interface AuthenticatedUser {
   name: string;
   email: string;
   roleId: string;
+  shopId: string | null;
   /** Role name resolved by the auth guard. Not used for RBAC decisions. */
   role: string;
 }

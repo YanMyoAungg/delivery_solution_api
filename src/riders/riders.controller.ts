@@ -19,6 +19,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/auth/permissions.decorator.js';
+import { CurrentUser } from '../common/auth/current-user.decorator.js';
+import type { AuthenticatedUser } from '../common/auth/auth.constants.js';
+import { OrdersService } from '../orders/orders.service.js';
+import { RiderDeliveredResponseDto } from './dto/rider-delivered-response.dto.js';
+import { RiderOrderResponseDto } from './dto/rider-order-response.dto.js';
 import { CreateRiderDto } from './dto/create-rider.dto.js';
 import { ListRidersQueryDto } from './dto/list-riders-query.dto.js';
 import { RiderListResponseDto } from './dto/rider-list-response.dto.js';
@@ -30,7 +35,32 @@ import { RidersService } from './riders.service.js';
 @ApiBearerAuth('access-token')
 @Controller({ path: 'riders', version: '1' })
 export class RidersController {
-  constructor(private readonly ridersService: RidersService) {}
+  constructor(
+    private readonly ridersService: RidersService,
+    private readonly ordersService: OrdersService,
+  ) {}
+
+  @Get('me/orders')
+  @RequirePermissions('deliveries.read')
+  @ApiOperation({ summary: 'List the authenticated rider’s assigned orders' })
+  @ApiOkResponse({ type: [RiderOrderResponseDto] })
+  listMyOrders(
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ): Promise<RiderOrderResponseDto[]> {
+    return this.ordersService.listRiderAssignedOrders(currentUser.id);
+  }
+
+  @Post('me/orders/:id/delivered')
+  @RequirePermissions('deliveries.update')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Submit an owned order delivery for office approval' })
+  @ApiOkResponse({ type: RiderDeliveredResponseDto })
+  submitDelivered(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ): Promise<RiderDeliveredResponseDto> {
+    return this.ordersService.submitRiderDelivered(id, currentUser.id);
+  }
 
   @Get()
   @RequirePermissions('riders.read')
@@ -63,8 +93,9 @@ export class RidersController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRiderDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
   ): Promise<RiderResponseDto> {
-    return this.ridersService.update(id, dto);
+    return this.ridersService.update(id, dto, currentUser.roleId);
   }
 
   @Delete(':id')

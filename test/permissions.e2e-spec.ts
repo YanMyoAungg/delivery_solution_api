@@ -13,14 +13,25 @@ import type { PermissionKey } from '../src/common/auth/permission-keys.js';
 
 const ORIGINAL_OPERATIONAL_GRANTS = {
   OFFICER: [
-    'pickups.create',
-    'pickups.read',
-    'pickups.update',
-    'deliveries.create',
+    'orders.create',
+    'orders.read',
+    'orders.update',
+    'orders.cancel',
+    'orders.update_costs',
+    'orders.update_after_approval',
     'deliveries.read',
     'deliveries.update',
+    'deliveries.approve',
+    'townships.read',
+    'partners.read',
+    'ways.create',
+    'ways.read',
+    'ways.update',
+    'reports.read',
+    'reports.export',
   ],
   RIDER: ['deliveries.read', 'deliveries.update'],
+  SHOP: ['shop-portal.read', 'shop-reports.export'],
 } as const;
 
 describe('Permissions & Roles (e2e)', () => {
@@ -70,11 +81,12 @@ describe('Permissions & Roles (e2e)', () => {
       !permissionService ||
       !roleIds.OWNER ||
       !roleIds.OFFICER ||
-      !roleIds.RIDER
+      !roleIds.RIDER ||
+      !roleIds.SHOP
     ) {
       return;
     }
-    for (const roleName of ['OFFICER', 'RIDER'] as const) {
+    for (const roleName of ['OFFICER', 'RIDER', 'SHOP'] as const) {
       await permissionService.setRoleGrants(roleIds.OWNER, roleIds[roleName], [
         ...ORIGINAL_OPERATIONAL_GRANTS[roleName],
       ] as PermissionKey[]);
@@ -93,7 +105,7 @@ describe('Permissions & Roles (e2e)', () => {
     database = app.get(DatabaseService);
     permissionService = app.get(PermissionService);
 
-    for (const name of ['OWNER', 'ADMIN', 'OFFICER', 'RIDER']) {
+    for (const name of ['OWNER', 'ADMIN', 'OFFICER', 'RIDER', 'SHOP']) {
       roleIds[name] = await getRoleId(name);
     }
   });
@@ -125,6 +137,7 @@ describe('Permissions & Roles (e2e)', () => {
       expect(response.body.length).toBeGreaterThan(0);
       const modules = response.body.map((g: { module: string }) => g.module);
       expect(modules).toContain('users');
+      expect(modules).not.toContain('pickups');
       const permissionsGroup = response.body.find(
         (g: { module: string }) => g.module === 'permissions',
       );
@@ -156,6 +169,26 @@ describe('Permissions & Roles (e2e)', () => {
 
       expect(response.body).toContain('users.read');
       expect(response.body).toContain('roles.create');
+    });
+
+    it('keeps riders without orders.read and grants SHOP only portal permissions', async () => {
+      const email = `perm-owner-role-matrix-${run}@e2e.local`;
+      await insertUser('OWNER', email);
+      const token = await login(email);
+
+      const riderPermissions = await request(app.getHttpServer())
+        .get(`/api/v1/permissions/roles/${roleIds.RIDER}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(riderPermissions.body).not.toContain('orders.read');
+
+      const shopPermissions = await request(app.getHttpServer())
+        .get(`/api/v1/permissions/roles/${roleIds.SHOP}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect([...shopPermissions.body].sort()).toEqual(
+        ['shop-portal.read', 'shop-reports.export'].sort(),
+      );
     });
   });
 

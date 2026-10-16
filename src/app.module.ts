@@ -14,8 +14,11 @@ import { ShopsModule } from './shops/shops.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { RidersModule } from './riders/riders.module.js';
 import { OrdersModule } from './orders/orders.module.js';
-import { PickupsModule } from './pickups/pickups.module.js';
-import { DeliveriesModule } from './deliveries/deliveries.module.js';
+import { TownshipsModule } from './townships/townships.module.js';
+import { DeliveryPartnersModule } from './delivery-partners/delivery-partners.module.js';
+import { WaysModule } from './ways/ways.module.js';
+import { ReportsModule } from './reports/reports.module.js';
+import { ShopPortalModule } from './shop-portal/shop-portal.module.js';
 
 @Module({
   imports: [
@@ -35,8 +38,11 @@ import { DeliveriesModule } from './deliveries/deliveries.module.js';
     CustomersModule,
     RidersModule,
     OrdersModule,
-    PickupsModule,
-    DeliveriesModule,
+    TownshipsModule,
+    DeliveryPartnersModule,
+    WaysModule,
+    ReportsModule,
+    ShopPortalModule,
   ],
   providers: [
     {

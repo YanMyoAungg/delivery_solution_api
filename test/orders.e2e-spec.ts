@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
 import { eq, inArray } from 'drizzle-orm';
 import { AppModule } from '../src/app.module.js';
@@ -12,6 +13,35 @@ import { customers } from '../src/customers/customer.schema.js';
 import { orders } from '../src/orders/order.schema.js';
 import { orderStatusHistory } from '../src/orders/order-status-history.schema.js';
 import { hashPassword } from '../src/common/utils/password.util.js';
+import { getDateInTimeZone } from '../src/common/utils/timezone-date.util.js';
+import { townships } from '../src/townships/township.schema.js';
+
+function localTimeAsUtc(date: string, time: string, timeZone: string): Date {
+  const [year = 0, month = 1, day = 1] = date.split('-').map(Number);
+  const [hour = 0, minute = 0] = time.split(':').map(Number);
+  const target = Date.UTC(year, month - 1, day, hour, minute);
+  let candidate = target;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(candidate));
+    const values = new Map(parts.map((part) => [part.type, part.value]));
+    const represented = Date.UTC(
+      Number(values.get('year')), Number(values.get('month')) - 1, Number(values.get('day')),
+      Number(values.get('hour')), Number(values.get('minute')), Number(values.get('second')),
+    );
+    candidate += target - represented;
+  }
+  return new Date(candidate);
+}
+
+function addCalendarDays(date: string, days: number): string {
+  const [year = 0, month = 1, day = 1] = date.split('-').map(Number);
+  const result = new Date(Date.UTC(year, month - 1, day + days));
+  return result.toISOString().slice(0, 10);
+}
 
 describe('Orders (e2e)', () => {
   let app: INestApplication;
@@ -20,6 +50,7 @@ describe('Orders (e2e)', () => {
   let ownerToken: string;
   let shopId: string;
   let customerId: string;
+  let townshipId: string;
   const createdOrderIds: string[] = [];
   const run = Date.now();
 
@@ -69,6 +100,11 @@ describe('Orders (e2e)', () => {
       .send({ name: `Orders Customer ${run}` })
       .expect(201);
     customerId = customer.body.id as string;
+    const [township] = await database.db.insert(townships).values({
+      name: `Orders Township ${run}`,
+      leadTimeDays: 2,
+    }).returning({ id: townships.id });
+    townshipId = township.id;
   });
 
   afterAll(async () => {
@@ -82,6 +118,7 @@ describe('Orders (e2e)', () => {
     if (customerId) {
       await database.db.delete(customers).where(eq(customers.id, customerId));
     }
+    if (townshipId) await database.db.delete(townships).where(eq(townships.id, townshipId));
     await database.db.delete(users).where(eq(users.id, ownerId));
     await app.close();
   });
@@ -106,7 +143,7 @@ describe('Orders (e2e)', () => {
     expect(created.body.shopId).toBe(shopId);
     expect(created.body.customerId).toBe(customerId);
     expect(created.body.deliveryFee).toBe('0.00');
-    expect(created.body.codAmount).toBe('0.00');
+    expect(created.body).not.toHaveProperty('codAmount');
     expect(created.body).not.toHaveProperty('passwordHash');
 
     const detail = await request(app.getHttpServer())
@@ -149,6 +186,43 @@ describe('Orders (e2e)', () => {
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(200);
     expect(filtered.body.data.length).toBeGreaterThan(0);
+  });
+
+  it.each(['02:00', '23:30'])('creates and filters an order created at Myanmar local time %s', async (localTime) => {
+    const timeZone = app.get(ConfigService).get<string>('APP_TIMEZONE') ?? 'Asia/Yangon';
+    const localDate = getDateInTimeZone(new Date(), timeZone);
+    const localCreatedAt = localTimeAsUtc(localDate, localTime, timeZone);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(localCreatedAt);
+    try {
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: `orders-owner-${run}@e2e.local`, password: 'owner1234' })
+        .expect(200);
+      const token = login.body.accessToken as string;
+      const created = await request(app.getHttpServer())
+        .post('/api/v1/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ shopId, customerId, townshipId })
+        .expect(201);
+      const orderId = created.body.id as string;
+      const trackingCode = created.body.trackingCode as string;
+      createdOrderIds.push(orderId);
+      expect(created.body.estimatedDeliveryDate).toBe(addCalendarDays(localDate, 2));
+
+      await database.db.update(orders).set({ createdAt: localCreatedAt, deliveredAt: localCreatedAt })
+        .where(eq(orders.id, orderId));
+      for (const dateBasis of ['ENTRY', 'DELIVERED'] as const) {
+        const listed = await request(app.getHttpServer())
+          .get('/api/v1/orders')
+          .query({ dateFrom: localDate, dateTo: localDate, dateBasis, search: trackingCode })
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(listed.body.data.map((order: { id: string }) => order.id)).toContain(orderId);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects registration with unknown shop or customer', async () => {

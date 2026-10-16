@@ -51,6 +51,7 @@ describe('PermissionsGuard', () => {
         email: 'a@x.local',
         role: 'ADMIN',
         roleId: 'r-admin',
+        shopId: null,
       }),
     );
 
@@ -70,6 +71,7 @@ describe('PermissionsGuard', () => {
           email: 'r@x.local',
           role: 'RIDER',
           roleId: 'r-rider',
+          shopId: null,
         }),
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -94,6 +96,7 @@ describe('PermissionsGuard', () => {
           email: 'o@x.local',
           role: 'OWNER',
           roleId: 'r-owner',
+          shopId: null,
         }),
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -109,6 +112,7 @@ describe('PermissionsGuard', () => {
         email: 'o@x.local',
         role: 'OWNER',
         roleId: 'r-owner',
+        shopId: null,
       }),
     );
 

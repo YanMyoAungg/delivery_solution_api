@@ -33,6 +33,11 @@ export class UpdateUserDto {
   @IsUUID()
   roleId?: string;
 
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsUUID()
+  shopId?: string | null;
+
   @ApiPropertyOptional({ enum: USER_STATUSES, enumName: 'UserStatus' })
   @IsOptional()
   @IsEnum(USER_STATUSES)

@@ -24,6 +24,18 @@ export class OrderHistoryResponseDto {
   @ApiPropertyOptional({ nullable: true })
   note: string | null;
 
+  @ApiPropertyOptional({ nullable: true, description: 'Shop-visible state-change reason' })
+  reason: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Internal-only state-change note' })
+  internalNote: string | null;
+
+  @ApiPropertyOptional({ nullable: true, type: Object })
+  previousAssignee: { type: 'RIDER' | 'PARTNER'; riderId: string | null; partnerId: string | null } | null;
+
+  @ApiPropertyOptional({ nullable: true, type: Object })
+  newAssignee: { type: 'RIDER' | 'PARTNER'; riderId: string | null; partnerId: string | null } | null;
+
   @ApiProperty({ example: '2026-09-18T10:00:00.000Z' })
   createdAt: string;
 }

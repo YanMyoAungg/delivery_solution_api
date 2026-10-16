@@ -6,6 +6,7 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  Matches,
 } from 'class-validator';
 import { USER_STATUSES, type UserStatus } from '../../users/user.schema.js';
 
@@ -38,4 +39,11 @@ export class UpdateRiderDto {
   @MinLength(8)
   @MaxLength(72)
   password?: string;
+
+  @ApiPropertyOptional({ example: '600.00', nullable: true })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  @MaxLength(13)
+  commissionPerWayOverride?: string | null;
 }

@@ -1,6 +1,17 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  Transform,
+  type TransformFnParams,
+  Type,
+} from 'class-transformer';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class ListShopsQueryDto {
   @ApiPropertyOptional({ example: 1, default: 1, minimum: 1 })
@@ -22,4 +33,15 @@ export class ListShopsQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by whether the shop has a login' })
+  @IsOptional()
+  @Type(() => String)
+  @Transform(({ value }: TransformFnParams) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  })
+  @IsBoolean()
+  hasLogin?: boolean;
 }

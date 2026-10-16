@@ -20,6 +20,9 @@ export class UserResponseDto {
   @ApiProperty({ example: 'OWNER' })
   role: string;
 
+  @ApiProperty({ nullable: true })
+  shopId: string | null;
+
   @ApiProperty({
     enum: USER_STATUSES,
     enumName: 'UserStatus',

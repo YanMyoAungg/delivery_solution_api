@@ -40,8 +40,21 @@ describe('ShopsService', () => {
   });
 
   it('lists shops with pagination metadata', async () => {
-    queryShops.findMany.mockResolvedValue([baseShop()]);
-    db.select.mockReturnValue({
+    db.select.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({}),
+      }),
+    }).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              offset: vi.fn().mockResolvedValue([baseShop({ hasLogin: false })]),
+            }),
+          }),
+        }),
+      }),
+    }).mockReturnValueOnce({
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockResolvedValue([{ count: 1 }]),
       }),
@@ -50,6 +63,7 @@ describe('ShopsService', () => {
     const result = await service.list({ page: 1, perPage: 20 });
 
     expect(result.data[0].name).toBe('Central Shop');
+    expect(result.data[0].hasLogin).toBe(false);
     expect(result.meta).toEqual({
       page: 1,
       perPage: 20,
@@ -59,7 +73,10 @@ describe('ShopsService', () => {
   });
 
   it('throws NotFoundException for an unknown shop', async () => {
-    queryShops.findFirst.mockResolvedValue(undefined);
+    db.select.mockReturnValue({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    });
     await expect(service.getById('missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );
@@ -79,6 +96,7 @@ describe('ShopsService', () => {
     });
 
     expect(result.id).toBe(baseShop().id);
+    expect(result.hasLogin).toBe(false);
     expect(db.insert.mock.results[0].value.values).toHaveBeenCalledWith({
       name: 'Central Shop',
       phone: '09123456789',
@@ -105,14 +123,21 @@ describe('ShopsService', () => {
     db.update.mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([baseShop({ name: 'Updated' })]),
+          returning: vi.fn().mockResolvedValue([{ id: baseShop().id }]),
         }),
       }),
+    });
+    db.select.mockReturnValue({
+      from: vi.fn().mockReturnThis(),
+      where: vi
+        .fn()
+        .mockResolvedValue([baseShop({ name: 'Updated', hasLogin: true })]),
     });
 
     const result = await service.update(baseShop().id, { name: 'Updated' });
 
     expect(result.name).toBe('Updated');
+    expect(result.hasLogin).toBe(true);
   });
 
   it('deletes an existing shop', async () => {

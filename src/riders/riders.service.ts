@@ -16,6 +16,8 @@ import { RiderListResponseDto } from './dto/rider-list-response.dto.js';
 import { RiderResponseDto } from './dto/rider-response.dto.js';
 import { UpdateRiderDto } from './dto/update-rider.dto.js';
 import { riders } from './rider.schema.js';
+import { PermissionService } from '../permissions/permissions.service.js';
+import { assertCanOverrideCommission } from '../ways/way-rules.util.js';
 
 type RiderJoinedRow = {
   riderId: string;
@@ -24,6 +26,7 @@ type RiderJoinedRow = {
   email: string;
   phone: string | null;
   status: 'ACTIVE' | 'INACTIVE';
+  commissionPerWayOverride: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -36,6 +39,7 @@ function toRiderResponse(row: RiderJoinedRow): RiderResponseDto {
     email: row.email,
     phone: row.phone,
     status: row.status,
+    commissionPerWayOverride: row.commissionPerWayOverride,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -43,7 +47,10 @@ function toRiderResponse(row: RiderJoinedRow): RiderResponseDto {
 
 @Injectable()
 export class RidersService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly permissions: PermissionService,
+  ) {}
 
   async list(query: ListRidersQueryDto): Promise<RiderListResponseDto> {
     const page = query.page ?? 1;
@@ -72,6 +79,7 @@ export class RidersService {
           email: users.email,
           phone: users.phone,
           status: users.status,
+          commissionPerWayOverride: riders.commissionPerWayOverride,
           createdAt: riders.createdAt,
           updatedAt: riders.updatedAt,
         })
@@ -139,7 +147,11 @@ export class RidersService {
     }
   }
 
-  async update(id: string, dto: UpdateRiderDto): Promise<RiderResponseDto> {
+  async update(id: string, dto: UpdateRiderDto, roleId: string): Promise<RiderResponseDto> {
+    if (dto.commissionPerWayOverride !== undefined) {
+      const effectivePermissions = await this.permissions.getEffectivePermissions(roleId);
+      assertCanOverrideCommission(effectivePermissions);
+    }
     const existing = await this.riderOrThrow(id);
     const email = dto.email ? normalizeEmail(dto.email) : undefined;
     const passwordHash = dto.password
@@ -174,7 +186,12 @@ export class RidersService {
           .where(eq(users.id, existing.userId));
         await tx
           .update(riders)
-          .set({ updatedAt: new Date() })
+          .set({
+            ...(dto.commissionPerWayOverride !== undefined && {
+              commissionPerWayOverride: dto.commissionPerWayOverride,
+            }),
+            updatedAt: new Date(),
+          })
           .where(eq(riders.id, id));
       });
       return this.getById(id);
@@ -203,6 +220,7 @@ export class RidersService {
         email: users.email,
         phone: users.phone,
         status: users.status,
+        commissionPerWayOverride: riders.commissionPerWayOverride,
         createdAt: riders.createdAt,
         updatedAt: riders.updatedAt,
       })

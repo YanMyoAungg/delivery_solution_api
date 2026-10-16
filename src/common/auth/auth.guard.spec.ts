@@ -146,6 +146,7 @@ describe('JwtAuthGuard', () => {
       name: 'Owner',
       email: 'owner@delivery.local',
       roleId: 'r-owner',
+      shopId: null,
       role: { name: 'OWNER' },
       status: 'ACTIVE',
     });
@@ -162,6 +163,7 @@ describe('JwtAuthGuard', () => {
       name: 'Owner',
       email: 'owner@delivery.local',
       roleId: 'r-owner',
+      shopId: null,
       role: 'OWNER',
     });
   });

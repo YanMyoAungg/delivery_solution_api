@@ -15,7 +15,9 @@ describe('Shops (e2e)', () => {
   let database: DatabaseService;
   let ownerId: string;
   let ownerToken: string;
+  let shopRoleId: string;
   const createdShopIds: string[] = [];
+  const createdUserIds: string[] = [];
   const run = Date.now();
 
   beforeAll(async () => {
@@ -31,6 +33,12 @@ describe('Shops (e2e)', () => {
       columns: { id: true },
     });
     if (!role) throw new Error('OWNER role missing - run db:seed');
+    const shopRole = await database.db.query.roles.findFirst({
+      where: eq(roles.name, 'SHOP'),
+      columns: { id: true },
+    });
+    if (!shopRole) throw new Error('SHOP role missing - run db:seed');
+    shopRoleId = shopRole.id;
     const [user] = await database.db
       .insert(users)
       .values({
@@ -51,6 +59,9 @@ describe('Shops (e2e)', () => {
   });
 
   afterAll(async () => {
+    for (const id of createdUserIds) {
+      await database.db.delete(users).where(eq(users.id, id));
+    }
     for (const id of createdShopIds) {
       await database.db.delete(shops).where(eq(shops.id, id));
     }
@@ -76,6 +87,7 @@ describe('Shops (e2e)', () => {
     createdShopIds.push(shopId);
 
     expect(created.body.name).toBe(`Shop ${run}`);
+    expect(created.body.hasLogin).toBe(false);
     expect(created.body).not.toHaveProperty('passwordHash');
 
     const listed = await request(app.getHttpServer())
@@ -130,5 +142,69 @@ describe('Shops (e2e)', () => {
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({ name: '' })
       .expect(400);
+  });
+
+  it('rejects a second login for a shop and filters shops without logins', async () => {
+    const occupied = await request(app.getHttpServer())
+      .post('/api/v1/shops')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Occupied Shop ${run}` })
+      .expect(201);
+    const free = await request(app.getHttpServer())
+      .post('/api/v1/shops')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Free Shop ${run}` })
+      .expect(201);
+    createdShopIds.push(occupied.body.id as string, free.body.id as string);
+
+    const firstLogin = await request(app.getHttpServer())
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: 'Shop Login',
+        email: `shop-login-${run}@e2e.local`,
+        roleId: shopRoleId,
+        shopId: occupied.body.id,
+        password: 'password1',
+      })
+      .expect(201);
+    createdUserIds.push(firstLogin.body.id as string);
+
+    const conflict = await request(app.getHttpServer())
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: 'Second Shop Login',
+        email: `second-shop-login-${run}@e2e.local`,
+        roleId: shopRoleId,
+        shopId: occupied.body.id,
+        password: 'password1',
+      })
+      .expect(409);
+    expect(conflict.body.message).toBe(
+      `Shop 'Occupied Shop ${run}' already has a login user`,
+    );
+
+    const availableShops = await request(app.getHttpServer())
+      .get(`/api/v1/shops?search=${run}&hasLogin=false`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(
+      availableShops.body.data.map((shop: { id: string }) => shop.id),
+    ).toContain(free.body.id);
+    expect(
+      availableShops.body.data.map((shop: { id: string }) => shop.id),
+    ).not.toContain(occupied.body.id);
+    expect(
+      availableShops.body.data.every(
+        (shop: { hasLogin: boolean }) => shop.hasLogin === false,
+      ),
+    ).toBe(true);
+
+    const detail = await request(app.getHttpServer())
+      .get(`/api/v1/shops/${occupied.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(detail.body.hasLogin).toBe(true);
   });
 });

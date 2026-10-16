@@ -250,7 +250,7 @@ describe('Auth & Users (e2e)', () => {
       const email = `dup-${run}@e2e.local`;
       await insertUser({ email });
 
-      await request(app.getHttpServer())
+      const duplicate = await request(app.getHttpServer())
         .post('/api/v1/users')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
@@ -260,6 +260,9 @@ describe('Auth & Users (e2e)', () => {
           password: 'password1',
         })
         .expect(409);
+      expect(duplicate.body.message).toBe(
+        `User with email '${email}' already exists`,
+      );
     });
 
     it('validates the payload (short password → 400)', async () => {
@@ -422,7 +425,7 @@ describe('Auth & Users (e2e)', () => {
     it('forbids an ADMIN promoting a user to OWNER (403)', async () => {
       const officerId = await insertUser({
         email: `hsec-officer-${run}@e2e.local`,
-        roleId: roleIds['OFFICER'],
+        role: 'OFFICER',
       });
 
       await request(app.getHttpServer())
