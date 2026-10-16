@@ -22,6 +22,7 @@ if (!databaseUrl) {
 }
 
 const sql = postgres(databaseUrl);
+const permissionNames = new Set<string>(PERMISSION_KEYS);
 
 /** Fixed permission catalog — generated from MODULE_ACTIONS (read-only at runtime). */
 const CATALOG: Array<{ name: string; module: ModuleName }> = (
@@ -31,7 +32,7 @@ const CATALOG: Array<{ name: string; module: ModuleName }> = (
 );
 
 /** Seed role set — closed union so lookups are typed, no undefined for known keys. */
-const SEED_ROLE_NAMES = ['OWNER', 'ADMIN', 'OFFICER', 'RIDER'] as const;
+const SEED_ROLE_NAMES = ['OWNER', 'ADMIN', 'OFFICER', 'RIDER', 'SHOP'] as const;
 type SeedRoleName = (typeof SEED_ROLE_NAMES)[number];
 
 /** Non-null role id lookup — roles are seeded just above, never missing. */
@@ -51,13 +52,40 @@ const GRANTS: Record<Exclude<SeedRoleName, 'OWNER'>, string[]> = {
     'orders.create',
     'orders.read',
     'orders.update',
-    'deliveries.create',
+    'orders.cancel',
+    'orders.update_costs',
+    'orders.update_after_approval',
     'deliveries.read',
     'deliveries.update',
+    'deliveries.approve',
+    'townships.read',
+    'townships.create',
+    'townships.update',
+    'townships.delete',
+    'partners.read',
+    'partners.create',
+    'partners.update',
+    'partners.delete',
+    'ways.create',
+    'ways.read',
+    'ways.update',
     'reports.read',
+    'reports.export',
   ],
   RIDER: ['deliveries.read', 'deliveries.update'],
+  SHOP: ['shop-portal.read', 'shop-reports.export'],
 };
+
+async function removeUnknownPermissions(): Promise<void> {
+  const existingPermissions = await sql<{ id: string; name: string }[]>`
+    select id, name from permissions
+  `;
+  for (const permission of existingPermissions) {
+    if (!permissionNames.has(permission.name)) {
+      await sql`delete from permissions where id = ${permission.id}`;
+    }
+  }
+}
 
 async function upsertPermissionNames(): Promise<Map<string, string>> {
   const ids = new Map<string, string>();
@@ -73,7 +101,7 @@ async function upsertPermissionNames(): Promise<Map<string, string>> {
   return ids;
 }
 
-async function seedRoles() {
+async function seedRoles(): Promise<Map<SeedRoleName, string>> {
   const roleIds = new Map<SeedRoleName, string>();
   for (const roleName of SEED_ROLE_NAMES) {
     const [row] = await sql<{ id: string }[]>`
@@ -89,8 +117,8 @@ async function seedRoles() {
 
 async function seedGrants(
   roleIds: Map<SeedRoleName, string>,
-  permIds: Map<string, string>,
-) {
+  permissionIds: Map<string, string>,
+): Promise<void> {
   // System role (OWNER) needs no grant rows — guard short-circuits to full catalog.
   await sql`delete from role_permissions where role_id = ${roleIdRequired(roleIds, 'OWNER')}`;
 
@@ -101,21 +129,27 @@ async function seedGrants(
     const roleId = roleIdRequired(roleIds, role);
     await sql`delete from role_permissions where role_id = ${roleId}`;
     for (const key of keys) {
-      const permId = permIds.get(key);
-      if (!permId) continue;
+      const permissionId = permissionIds.get(key);
+      if (!permissionId) continue;
       await sql`
         insert into role_permissions (role_id, permission_id)
-        values (${roleId}, ${permId})
+        values (${roleId}, ${permissionId})
         on conflict (role_id, permission_id) do nothing
       `;
     }
   }
 }
 
-async function main() {
-  const permIds = await upsertPermissionNames();
+async function main(): Promise<void> {
+  await removeUnknownPermissions();
+  const permissionIds = await upsertPermissionNames();
   const roleIds = await seedRoles();
-  await seedGrants(roleIds, permIds);
+  await seedGrants(roleIds, permissionIds);
+  await sql`
+    insert into app_settings (key, value)
+    values ('commissionPerWay', '500')
+    on conflict (key) do nothing
+  `;
 
   // Backfill any user missing a role (created before the RBAC migration) to OFFICER.
   await sql`
@@ -136,7 +170,7 @@ async function main() {
       values (${OWNER_NAME}, ${OWNER_EMAIL}, ${passwordHash}, ${roleIdRequired(roleIds, 'OWNER')}, 'ACTIVE')
     `;
     console.log(
-      `Seeded OWNER: ${OWNER_NAME} <${OWNER_EMAIL}> (password: ${OWNER_PASSWORD})`,
+      `Seeded OWNER: ${OWNER_NAME} <${OWNER_EMAIL}> (default password: ${OWNER_PASSWORD})`,
     );
   } else {
     console.log(`OWNER already exists for ${OWNER_EMAIL}, skipping`);
@@ -161,7 +195,7 @@ async function main() {
       values (${admin.name}, ${normalized}, ${passwordHash}, ${roleIdRequired(roleIds, 'ADMIN')}, 'ACTIVE')
     `;
     console.log(
-      `Seeded ADMIN: ${admin.name} <${normalized}> (password: ${OWNER_PASSWORD})`,
+      `Seeded ADMIN: ${admin.name} <${normalized}> (default password: ${OWNER_PASSWORD})`,
     );
   }
 }

@@ -1,10 +1,11 @@
 import {
   pgEnum,
-  pgTable,
   text,
+  numeric,
   timestamp,
   uniqueIndex,
   uuid,
+  pgTable,
 } from 'drizzle-orm/pg-core';
 import { users } from '../users/user.schema.js';
 
@@ -34,6 +35,10 @@ export const riders = pgTable(
     nrcNumber: text('nrc_number'),
     emergencyContactPhone: text('emergency_contact_phone'),
     notes: text('notes'),
+    commissionPerWayOverride: numeric('commission_per_way_override', {
+      precision: 12,
+      scale: 2,
+    }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

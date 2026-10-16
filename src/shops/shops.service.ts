@@ -3,18 +3,22 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { eq, ilike, or, sql } from 'drizzle-orm';
+import { and, eq, exists, ilike, not, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
 import { isUniqueViolation } from '../common/database/is-unique-violation.js';
 import { escapeLikeWildcards } from '../common/utils/normalize.util.js';
 import { shops } from './shop.schema.js';
+import { users } from '../users/user.schema.js';
 import { CreateShopDto } from './dto/create-shop.dto.js';
 import { UpdateShopDto } from './dto/update-shop.dto.js';
 import { ListShopsQueryDto } from './dto/list-shops-query.dto.js';
 import { ShopResponseDto } from './dto/shop-response.dto.js';
 import { ShopListResponseDto } from './dto/shop-list-response.dto.js';
 
-function toShopResponse(row: typeof shops.$inferSelect): ShopResponseDto {
+function toShopResponse(
+  row: typeof shops.$inferSelect,
+  hasLogin: boolean,
+): ShopResponseDto {
   return {
     id: row.id,
     name: row.name,
@@ -23,6 +27,7 @@ function toShopResponse(row: typeof shops.$inferSelect): ShopResponseDto {
     notes: row.notes,
     channelType: row.channelType,
     channelName: row.channelName,
+    hasLogin,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -35,7 +40,7 @@ export class ShopsService {
   async list(query: ListShopsQueryDto): Promise<ShopListResponseDto> {
     const page = query.page ?? 1;
     const perPage = query.perPage ?? 20;
-    const where = query.search?.trim()
+    const searchCondition = query.search?.trim()
       ? (() => {
           const search = `%${escapeLikeWildcards(query.search.trim())}%`;
           return or(
@@ -46,14 +51,39 @@ export class ShopsService {
           );
         })()
       : undefined;
+    const hasLoginExpression = sql<boolean>`${exists(
+      this.database.db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.shopId, shops.id)),
+    )}`;
+    const loginCondition =
+      query.hasLogin === undefined
+        ? undefined
+        : query.hasLogin
+          ? hasLoginExpression
+          : not(hasLoginExpression);
+    const where = and(searchCondition, loginCondition);
 
     const [rows, countResult] = await Promise.all([
-      this.database.db.query.shops.findMany({
-        where,
-        limit: perPage,
-        offset: (page - 1) * perPage,
-        orderBy: shops.name,
-      }),
+      this.database.db
+        .select({
+          id: shops.id,
+          name: shops.name,
+          phone: shops.phone,
+          address: shops.address,
+          notes: shops.notes,
+          channelType: shops.channelType,
+          channelName: shops.channelName,
+          createdAt: shops.createdAt,
+          updatedAt: shops.updatedAt,
+          hasLogin: hasLoginExpression,
+        })
+        .from(shops)
+        .where(where)
+        .orderBy(shops.name)
+        .limit(perPage)
+        .offset((page - 1) * perPage),
       this.database.db
         .select({ count: sql<number>`count(*)` })
         .from(shops)
@@ -62,13 +92,34 @@ export class ShopsService {
 
     const total = Number(countResult[0]?.count ?? 0);
     return {
-      data: rows.map(toShopResponse),
+      data: rows.map((row) => toShopResponse(row, row.hasLogin)),
       meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
     };
   }
 
   async getById(id: string): Promise<ShopResponseDto> {
-    return toShopResponse(await this.shopOrThrow(id));
+    const [row] = await this.database.db
+      .select({
+        id: shops.id,
+        name: shops.name,
+        phone: shops.phone,
+        address: shops.address,
+        notes: shops.notes,
+        channelType: shops.channelType,
+        channelName: shops.channelName,
+        createdAt: shops.createdAt,
+        updatedAt: shops.updatedAt,
+        hasLogin: sql<boolean>`${exists(
+          this.database.db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.shopId, shops.id)),
+        )}`,
+      })
+      .from(shops)
+      .where(eq(shops.id, id));
+    if (!row) throw new NotFoundException(`Shop '${id}' not found`);
+    return toShopResponse(row, row.hasLogin);
   }
 
   async create(dto: CreateShopDto): Promise<ShopResponseDto> {
@@ -84,7 +135,7 @@ export class ShopsService {
           channelName: dto.channelName.trim(),
         })
         .returning();
-      return toShopResponse(row);
+      return toShopResponse(row, false);
     } catch (err) {
       if (isUniqueViolation(err)) {
         throw new ConflictException(`Shop '${dto.name.trim()}' already exists`);
@@ -104,14 +155,12 @@ export class ShopsService {
           ...(dto.address !== undefined && { address: dto.address }),
           ...(dto.notes !== undefined && { notes: dto.notes }),
           ...(dto.channelType !== undefined && { channelType: dto.channelType }),
-          ...(dto.channelName !== undefined && {
-            channelName: dto.channelName.trim(),
-          }),
+          ...(dto.channelName !== undefined && { channelName: dto.channelName.trim() }),
           updatedAt: new Date(),
         })
         .where(eq(shops.id, id))
-        .returning();
-      return toShopResponse(row);
+        .returning({ id: shops.id });
+      return this.getById(row.id);
     } catch (err) {
       if (isUniqueViolation(err)) {
         throw new ConflictException(`Shop '${dto.name?.trim()}' already exists`);

@@ -16,12 +16,22 @@ const ORIGINAL_OPERATIONAL_GRANTS = {
     'orders.create',
     'orders.read',
     'orders.update',
-    'deliveries.create',
+    'orders.cancel',
+    'orders.update_costs',
+    'orders.update_after_approval',
     'deliveries.read',
     'deliveries.update',
+    'deliveries.approve',
+    'townships.read',
+    'partners.read',
+    'ways.create',
+    'ways.read',
+    'ways.update',
     'reports.read',
+    'reports.export',
   ],
   RIDER: ['deliveries.read', 'deliveries.update'],
+  SHOP: ['shop-portal.read', 'shop-reports.export'],
 } as const;
 
 describe('Permissions & Roles (e2e)', () => {
@@ -49,7 +59,7 @@ describe('Permissions & Roles (e2e)', () => {
       .values({
         name: `E2E ${roleName}`,
         email,
-        passwordHash: await hashPassword('Password1234'),
+        passwordHash: await hashPassword('owner1234'),
         roleId,
         status: 'ACTIVE',
       })
@@ -61,7 +71,7 @@ describe('Permissions & Roles (e2e)', () => {
   async function login(email: string) {
     const response = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email, password: 'Password1234' })
+      .send({ email, password: 'owner1234' })
       .expect(200);
     return response.body.accessToken as string;
   }
@@ -71,11 +81,12 @@ describe('Permissions & Roles (e2e)', () => {
       !permissionService ||
       !roleIds.OWNER ||
       !roleIds.OFFICER ||
-      !roleIds.RIDER
+      !roleIds.RIDER ||
+      !roleIds.SHOP
     ) {
       return;
     }
-    for (const roleName of ['OFFICER', 'RIDER'] as const) {
+    for (const roleName of ['OFFICER', 'RIDER', 'SHOP'] as const) {
       await permissionService.setRoleGrants(roleIds.OWNER, roleIds[roleName], [
         ...ORIGINAL_OPERATIONAL_GRANTS[roleName],
       ] as PermissionKey[]);
@@ -94,7 +105,7 @@ describe('Permissions & Roles (e2e)', () => {
     database = app.get(DatabaseService);
     permissionService = app.get(PermissionService);
 
-    for (const name of ['OWNER', 'ADMIN', 'OFFICER', 'RIDER']) {
+    for (const name of ['OWNER', 'ADMIN', 'OFFICER', 'RIDER', 'SHOP']) {
       roleIds[name] = await getRoleId(name);
     }
   });
@@ -158,6 +169,26 @@ describe('Permissions & Roles (e2e)', () => {
 
       expect(response.body).toContain('users.read');
       expect(response.body).toContain('roles.create');
+    });
+
+    it('keeps riders without orders.read and grants SHOP only portal permissions', async () => {
+      const email = `perm-owner-role-matrix-${run}@e2e.local`;
+      await insertUser('OWNER', email);
+      const token = await login(email);
+
+      const riderPermissions = await request(app.getHttpServer())
+        .get(`/api/v1/permissions/roles/${roleIds.RIDER}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(riderPermissions.body).not.toContain('orders.read');
+
+      const shopPermissions = await request(app.getHttpServer())
+        .get(`/api/v1/permissions/roles/${roleIds.SHOP}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect([...shopPermissions.body].sort()).toEqual(
+        ['shop-portal.read', 'shop-reports.export'].sort(),
+      );
     });
   });
 

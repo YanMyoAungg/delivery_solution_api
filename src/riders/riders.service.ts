@@ -1,5 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, eq, ilike, or, sql } from 'drizzle-orm';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
 import { isUniqueViolation } from '../common/database/is-unique-violation.js';
 import { escapeLikeWildcards, normalizeEmail } from '../common/utils/normalize.util.js';
@@ -7,12 +11,15 @@ import { hashPassword } from '../common/utils/password.util.js';
 import { roles } from '../roles/roles.schema.js';
 import { users } from '../users/user.schema.js';
 import { CreateRiderDto } from './dto/create-rider.dto.js';
-import { AssignableRiderResponseDto } from './dto/assignable-rider-response.dto.js';
 import { ListRidersQueryDto } from './dto/list-riders-query.dto.js';
 import { RiderListResponseDto } from './dto/rider-list-response.dto.js';
 import { RiderResponseDto } from './dto/rider-response.dto.js';
 import { UpdateRiderDto } from './dto/update-rider.dto.js';
-import { riders, type RiderVehicleType } from './rider.schema.js';
+import { AssignableRiderResponseDto } from './dto/assignable-rider-response.dto.js';
+import { riders } from './rider.schema.js';
+import type { RiderVehicleType } from './rider.schema.js';
+import { PermissionService } from '../permissions/permissions.service.js';
+import { assertCanOverrideCommission } from '../ways/way-rules.util.js';
 
 type RiderJoinedRow = {
   riderId: string;
@@ -21,6 +28,7 @@ type RiderJoinedRow = {
   email: string;
   phone: string | null;
   status: 'ACTIVE' | 'INACTIVE';
+  commissionPerWayOverride: string | null;
   vehicleType: RiderVehicleType;
   vehiclePlate: string | null;
   licenseNo: string | null;
@@ -39,6 +47,7 @@ function toRiderResponse(row: RiderJoinedRow): RiderResponseDto {
     email: row.email,
     phone: row.phone,
     status: row.status,
+    commissionPerWayOverride: row.commissionPerWayOverride,
     vehicleType: row.vehicleType,
     vehiclePlate: row.vehiclePlate,
     licenseNo: row.licenseNo,
@@ -52,7 +61,10 @@ function toRiderResponse(row: RiderJoinedRow): RiderResponseDto {
 
 @Injectable()
 export class RidersService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly permissions: PermissionService,
+  ) {}
 
   async list(query: ListRidersQueryDto): Promise<RiderListResponseDto> {
     const page = query.page ?? 1;
@@ -81,6 +93,7 @@ export class RidersService {
           email: users.email,
           phone: users.phone,
           status: users.status,
+          commissionPerWayOverride: riders.commissionPerWayOverride,
           vehicleType: riders.vehicleType,
           vehiclePlate: riders.vehiclePlate,
           licenseNo: riders.licenseNo,
@@ -112,19 +125,18 @@ export class RidersService {
     };
   }
 
-  async listAssignableForOrders(): Promise<AssignableRiderResponseDto[]> {
+  async getById(id: string): Promise<RiderResponseDto> {
+    return toRiderResponse(await this.riderOrThrow(id));
+  }
+
+  async listAssignable(): Promise<AssignableRiderResponseDto[]> {
     return this.database.db
       .select({ id: riders.id, name: users.name })
       .from(riders)
       .innerJoin(users, eq(riders.userId, users.id))
       .innerJoin(roles, eq(users.roleId, roles.id))
-      .where(and(eq(roles.name, 'RIDER'), eq(users.status, 'ACTIVE')))
-      .orderBy(asc(users.name), asc(riders.id));
-  }
-
-  async getById(id: string): Promise<RiderResponseDto> {
-    const row = await this.riderOrThrow(id);
-    return toRiderResponse(row);
+      .where(and(eq(users.status, 'ACTIVE'), eq(roles.name, 'RIDER')))
+      .orderBy(users.name);
   }
 
   async create(dto: CreateRiderDto): Promise<RiderResponseDto> {
@@ -173,7 +185,11 @@ export class RidersService {
     }
   }
 
-  async update(id: string, dto: UpdateRiderDto): Promise<RiderResponseDto> {
+  async update(id: string, dto: UpdateRiderDto, roleId: string): Promise<RiderResponseDto> {
+    if (dto.commissionPerWayOverride !== undefined) {
+      const effectivePermissions = await this.permissions.getEffectivePermissions(roleId);
+      assertCanOverrideCommission(effectivePermissions);
+    }
     const existing = await this.riderOrThrow(id);
     const email = dto.email ? normalizeEmail(dto.email) : undefined;
     const passwordHash = dto.password
@@ -209,12 +225,11 @@ export class RidersService {
         await tx
           .update(riders)
           .set({
-            ...(dto.vehicleType !== undefined && {
-              vehicleType: dto.vehicleType,
+            ...(dto.commissionPerWayOverride !== undefined && {
+              commissionPerWayOverride: dto.commissionPerWayOverride,
             }),
-            ...(dto.vehiclePlate !== undefined && {
-              vehiclePlate: dto.vehiclePlate,
-            }),
+            ...(dto.vehicleType !== undefined && { vehicleType: dto.vehicleType }),
+            ...(dto.vehiclePlate !== undefined && { vehiclePlate: dto.vehiclePlate }),
             ...(dto.licenseNo !== undefined && { licenseNo: dto.licenseNo }),
             ...(dto.nrcNumber !== undefined && { nrcNumber: dto.nrcNumber }),
             ...(dto.emergencyContactPhone !== undefined && {
@@ -251,6 +266,7 @@ export class RidersService {
         email: users.email,
         phone: users.phone,
         status: users.status,
+        commissionPerWayOverride: riders.commissionPerWayOverride,
         vehicleType: riders.vehicleType,
         vehiclePlate: riders.vehiclePlate,
         licenseNo: riders.licenseNo,
@@ -267,5 +283,4 @@ export class RidersService {
     if (!row) throw new NotFoundException(`Rider '${id}' not found`);
     return row;
   }
-
 }

@@ -1,22 +1,18 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
+import { deliveryPartners } from '../delivery-partners/delivery-partner.schema.js';
+import { riders } from '../riders/rider.schema.js';
 import { isUniqueViolation } from '../common/database/is-unique-violation.js';
 import { CreateTownshipDto } from './dto/create-township.dto.js';
-import { TownshipResponseDto } from './dto/township-response.dto.js';
 import { UpdateTownshipDto } from './dto/update-township.dto.js';
+import { TownshipResponseDto } from './dto/township-response.dto.js';
 import { townships } from './township.schema.js';
 
 type TownshipRow = typeof townships.$inferSelect;
 
 function toTownshipResponse(row: TownshipRow): TownshipResponseDto {
-  return {
-    id: row.id,
-    name: row.name,
-    defaultDeliveryFee: row.defaultDeliveryFee,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
+  return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
 @Injectable()
@@ -24,59 +20,77 @@ export class TownshipsService {
   constructor(private readonly database: DatabaseService) {}
 
   async list(): Promise<TownshipResponseDto[]> {
-    const rows = await this.database.db
-      .select()
-      .from(townships)
-      .orderBy(asc(townships.name));
+    const rows = await this.database.db.select().from(townships).orderBy(townships.name);
     return rows.map(toTownshipResponse);
   }
 
-  async create(dto: CreateTownshipDto): Promise<TownshipResponseDto> {
+  async getById(id: string): Promise<TownshipResponseDto> {
+    return toTownshipResponse(await this.townshipOrThrow(id));
+  }
+
+  async create(input: CreateTownshipDto): Promise<TownshipResponseDto> {
+    await this.assertDefaultAssignee(input);
     try {
-      const [row] = await this.database.db
-        .insert(townships)
-        .values({
-          name: dto.name.trim(),
-          defaultDeliveryFee: dto.defaultDeliveryFee,
-        })
-        .returning();
+      const [row] = await this.database.db.insert(townships).values({
+        name: input.name.trim(),
+        defaultDeliveryFee: input.defaultDeliveryFee,
+        leadTimeDays: input.leadTimeDays,
+        defaultAssigneeType: input.defaultAssigneeType ?? null,
+        defaultRiderId: input.defaultRiderId ?? null,
+        defaultPartnerId: input.defaultPartnerId ?? null,
+      }).returning();
       return toTownshipResponse(row);
     } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new ConflictException(`Township '${dto.name}' already exists`);
-      }
+      if (isUniqueViolation(error)) throw new ConflictException(`Township '${input.name.trim()}' already exists`);
       throw error;
     }
   }
 
-  async update(id: string, dto: UpdateTownshipDto): Promise<TownshipResponseDto> {
-    const existing = await this.database.db.query.townships.findFirst({
-      where: eq(townships.id, id),
-    });
-    if (!existing) throw new NotFoundException(`Township '${id}' not found`);
-    if (dto.name === undefined && dto.defaultDeliveryFee === undefined) {
-      return toTownshipResponse(existing);
-    }
-
+  async update(id: string, input: UpdateTownshipDto): Promise<TownshipResponseDto> {
+    const existing = await this.townshipOrThrow(id);
+    const updated = { ...existing, ...input };
+    await this.assertDefaultAssignee(updated);
     try {
-      const [row] = await this.database.db
-        .update(townships)
-        .set({
-          ...(dto.name !== undefined && { name: dto.name.trim() }),
-          ...(dto.defaultDeliveryFee !== undefined && {
-            defaultDeliveryFee: dto.defaultDeliveryFee,
-          }),
-          updatedAt: new Date(),
-        })
-        .where(eq(townships.id, id))
-        .returning();
+      const [row] = await this.database.db.update(townships).set({
+        ...(input.name !== undefined && { name: input.name.trim() }),
+        ...(input.defaultDeliveryFee !== undefined && { defaultDeliveryFee: input.defaultDeliveryFee }),
+        ...(input.leadTimeDays !== undefined && { leadTimeDays: input.leadTimeDays }),
+        ...(input.defaultAssigneeType !== undefined && { defaultAssigneeType: input.defaultAssigneeType }),
+        ...(input.defaultRiderId !== undefined && { defaultRiderId: input.defaultRiderId }),
+        ...(input.defaultPartnerId !== undefined && { defaultPartnerId: input.defaultPartnerId }),
+        updatedAt: new Date(),
+      }).where(eq(townships.id, id)).returning();
       return toTownshipResponse(row);
     } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new ConflictException(`Township '${dto.name}' already exists`);
-      }
+      if (isUniqueViolation(error)) throw new ConflictException(`Township '${input.name?.trim()}' already exists`);
       throw error;
     }
   }
 
+  async remove(id: string): Promise<void> {
+    await this.townshipOrThrow(id);
+    await this.database.db.delete(townships).where(eq(townships.id, id));
+  }
+
+  private async townshipOrThrow(id: string): Promise<TownshipRow> {
+    const row = await this.database.db.query.townships.findFirst({ where: eq(townships.id, id) });
+    if (!row) throw new NotFoundException(`Township '${id}' not found`);
+    return row;
+  }
+
+  private async assertDefaultAssignee(value: Partial<Pick<TownshipRow, 'defaultAssigneeType' | 'defaultRiderId' | 'defaultPartnerId'>>): Promise<void> {
+    const defaultAssigneeType = value.defaultAssigneeType ?? null;
+    const defaultRiderId = value.defaultRiderId ?? null;
+    const defaultPartnerId = value.defaultPartnerId ?? null;
+    const isUnassigned = defaultAssigneeType === null && defaultRiderId === null && defaultPartnerId === null;
+    const isRider = defaultAssigneeType === 'RIDER' && defaultRiderId !== null && defaultPartnerId === null;
+    const isPartner = defaultAssigneeType === 'PARTNER' && defaultPartnerId !== null && defaultRiderId === null;
+    if (!isUnassigned && !isRider && !isPartner) throw new BadRequestException('Default assignee type and id must match');
+    if (isRider && defaultRiderId && !await this.database.db.query.riders.findFirst({ where: eq(riders.id, defaultRiderId), columns: { id: true } })) {
+      throw new BadRequestException('Default rider not found');
+    }
+    if (isPartner && defaultPartnerId && !await this.database.db.query.deliveryPartners.findFirst({ where: eq(deliveryPartners.id, defaultPartnerId), columns: { id: true } })) {
+      throw new BadRequestException('Default delivery partner not found');
+    }
+  }
 }

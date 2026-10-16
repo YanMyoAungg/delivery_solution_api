@@ -1,104 +1,99 @@
 # AGENTS.md
 
-NestJS 12 (Express) + TypeScript API for a single delivery company's operations. Postgres 18/Drizzle, Redis, Swagger, Vitest. Single package, no monorepo. Only commit/push when the user explicitly asks.
+NestJS 12 (Express) + TypeScript API for a single delivery company's operations. PostgreSQL 18/Drizzle, Redis, Swagger, Vitest. Single package; only commit or push when the user explicitly asks.
 
-## Skills & tools — invoke before task-specific code
+## Skills — invoke before task-specific code
 
-Check the `skill` tool's available-skills list at the start of every task; if a row matches, invoke the skill before writing code. Multiple can apply. If a skill named here is unavailable in the session, say so in one line and continue.
+Check the table at the start of each task; if a row matches, invoke the skill before writing code. Multiple rows can apply.
 
 | Task touches | Invoke |
 |---|---|
-| Multi-step feature work needing a plan | `writing-plans` → `executing-plans` |
-| Debugging a failing behavior | `systematic-debugging` |
-| Writing/refactoring logic or fixing a bug | `test-driven-development`, then `verification-before-completion` |
-| Dispatching parallel work / subagents | `dispatching-parallel-agents` |
-| Library/framework/SDK/CLI docs question | `find-docs` |
-| Code review / quality pass on changes | `/code-review` command, or direct review |
+| Any frontend/UI work | `ui-ux-pro-max` |
+| Landing/marketing pages or aesthetic polish | `taste` on top of `ui-ux-pro-max` |
+| Charts, graphs, KPI tiles, data visualization | `dataviz` before the first chart line |
+| Logos, decks, icon sets, brand/social assets | `ui-ux-pro-max:design` |
+| Library/framework/SDK/CLI docs question | Context7 (`ctx7` CLI per local rules) |
+| Code review / quality pass on changes | `code-review` |
 
-This repo is backend-only, so the frontend design skills (`ui-ux-pro-max`, `design-taste-frontend`, `frontend-design`) and `data-visualization` normally do **not** apply. Utility-only work (pure API/backend/config) needs no design skill.
+Utility-only backend work needs no frontend skill.
 
-## MCP servers for this repo
+## Project and phase status
 
-- `github` — PR/issue/check operations. The only MCP server enabled for this backend repo.
-- The global `playwright`, `shadcn`, and `n8n` servers are explicitly disabled in `opencode.json` (`"enabled": false`), so this repo pays no context cost for them. The old `filesystem` server (a non-existent Windows path) was removed.
-
-## Quality gate
-
-No `/verify` command is configured for this repo; run the gate directly: `pnpm lint && pnpm build && pnpm test` (add `pnpm test:e2e` with the docker Postgres running when relevant).
+Foundation, Phase 1 (Users/Auth/RBAC), and Phase 2 (master data) are complete. Phases 3–5 are superseded by `docs/delivery-workflow-v2.md`; workflow v2 phases A–E are complete: schema/state/RBAC, office orders and approval, ways/commission, reports/dashboards, and shop portal. Phase 6 (returns/payment ledger/reconciliation) remains blocked; Phase 7 (notifications/Viber) is later; Phase 8 reporting is partially delivered by phases D/E, with additional scope still to be defined. See `README.md`, `PLAN.md`, and the workflow document's As built section.
 
 ## Type safety / code quality (mandatory)
 
-- **No `any`** anywhere. Type everything: DTOs for all request/response shapes, explicit return types, `unknown` at trust boundaries. `@typescript-eslint/no-explicit-any` (recommended set) stays on.
-- No `@ts-ignore` / `@ts-expect-error` / bare `!` to silence the compiler. Cast via `unknown` + narrowing + type-guard (e.g. `isUniqueViolation` reading `err.cause.code`) — never `as any`.
-- `strict` is on; new code keeps it. Use `satisfies` for const arrays bounded by a broader type.
-- Drizzle: `.$inferSelect`/`.$inferInsert` row shapes; never return bare `Record<string, unknown>` from services (thin swagger clients).
+- No `any`. Type every request/response DTO and explicit return type; use `unknown` at trust boundaries.
+- No `@ts-ignore`, `@ts-expect-error`, or bare non-null assertion to silence the compiler. Narrow unknown values with guards.
+- Strict TypeScript remains enabled. Use `satisfies` for const arrays bounded by broader types.
+- Drizzle row types use `.$inferSelect`/`.$inferInsert`; don't return bare `Record<string, unknown>` from services.
+- ESM under `nodenext`: relative imports must end in `.js`.
 
 ## Commands
 
 ```bash
-pnpm db:generate   # generate Drizzle migration from src/common/database/schema.ts
-pnpm db:migrate    # apply migrations
-pnpm db:seed       # idempotent seed (OWNER + 2 admins; SEED_OWNER_* env override)
-pnpm db:reset      # DROP ALL → migrate → seed (clean slate)
-pnpm start:dev     # watch-mode dev server; auto-runs migrations on bootstrap
+pnpm db:generate
+pnpm db:migrate
+pnpm db:seed          # base roles, fixed permission catalog, owner/admin accounts
+pnpm db:seed:demo     # disposable development fixtures; never production
+pnpm db:reset         # destructive schema/data drop, migrate, then base seed
+pnpm start:dev        # watch mode; migrations auto-apply at bootstrap
 ```
 
-Quality gate (run all four):
+Quality gate:
+
 ```bash
-pnpm lint      # ESLint flat config (eslint.config.mjs), src + test
-pnpm build     # nest build -> dist/
-pnpm test      # Vitest unit (**/*.spec.ts) — mock DB, no containers needed
-pnpm test:e2e  # Vitest e2e (test/*.e2e-spec.ts) — hits the REAL docker Postgres
+pnpm typecheck
+pnpm lint
+pnpm build
+pnpm test
+pnpm test:e2e
 ```
 
-e2e requires `docker compose up -d` running (Postgres on host port 5433); it inserts into the shared dev DB and cleans up. Don't run e2e against a DB you care about.
+E2E requires `docker compose up -d` and writes to the Compose Postgres database. Do not run against a database you care about. `pnpm db:reset` operates on the Compose `postgres` service and drops all data before migration and base seeding; demo fixtures are separate.
 
-## Environment (easy to get wrong)
+## Environment
 
-- `.env` (gitignored) intentionally **differs from `.env.example`**: local Postgres publishes on host port `5433`; the committed example uses `5432`. Never overwrite `.env` from `.env.example`.
-- `drizzle.config.ts` loads `.env.local`/`.env` itself and reads `DATABASE_URL`; `src/config/env.validation.ts` fails boot if `DATABASE_URL` or `JWT_SECRET` are missing.
+- `.env` is gitignored and may intentionally differ from `.env.example`; local Postgres commonly uses host port 5433 while the example uses 5432. Never overwrite `.env` from the example without checking it.
+- `APP_TIMEZONE` defaults to `Asia/Yangon`; use it for business-day boundaries and date grouping.
+- App config is validated in `src/config/env.validation.ts`; `DATABASE_URL` and `JWT_SECRET` are required. `drizzle.config.ts` loads environment files itself.
 
-## Auth / RBAC — affects every new route
+## Auth / RBAC
 
-- `src/app.module.ts` registers global `APP_GUARD`s (JwtAuthGuard + PermissionsGuard): every route requires a `Bearer` JWT unless marked `@Public()`.
-- Protected routes declare `@RequirePermissions('x.y')`; keys must exist in `src/common/auth/permission-keys.ts` and effective role grants come from the database/default grants in `scripts/seed.ts` (unknown keys fail closed).
-- Riders must **not** receive `orders.read`. Rider board/dashboard endpoints use `deliveries.read`, derive the rider from the JWT, and return only orders whose latest delivery attempt is assigned to that rider. No colleague-township rows or redaction path remains. Office order/delivery history uses `orders.read`; office reassign uses `orders.update`.
-- Users not in any permission list are "authenticated only" — don't rely on that; annotate explicitly.
-- Never return `passwordHash` in any response. Auth is access-token only.
+- `src/app.module.ts` registers global JWT authentication and permission guards. Every route needs a bearer token unless marked `@Public()`.
+- Protected routes declare `@RequirePermissions('module.action')`; use only keys in `src/common/auth/permission-keys.ts`.
+- The permission catalog is fixed: **17 modules / 87 keys** (`users`, `roles`, `permissions`, `shops`, `customers`, `riders`, `orders`, `deliveries`, `townships`, `partners`, `ways`, `shop-portal`, `shop-reports`, `returns`, `payments`, `notifications`, `reports`). Permission keys are seeded and cannot be created/deleted at runtime; role grants can be replaced.
+- Seed roles are `OWNER`, `ADMIN`, `OFFICER`, `RIDER`, and `SHOP`. `scripts/seed.ts` is authoritative for the exact grants. OWNER is a system role and receives the whole current catalog.
+- Never expose `passwordHash`. Authentication uses access tokens; the auth guard rebuilds the active user from the database.
 
-## Code conventions that differ from Nest defaults
+## Architecture
 
-- ESM under `nodenext`: relative imports MUST end in `.js` (`import { users } from '../../users/user.schema.js'`). Missing extension = tsc build error.
-- Drizzle tables live with their feature module; the central entry `src/common/database/schema.ts` re-exports them (`export * from '../../<module>/<name>.schema.js'`). New tables MUST be re-exported there or `db:generate` silently won't see them.
-- Controllers: `@Controller({ path: 'x', version: '1' })` → all routes under `/api/v1/...`.
-- OpenAPI is generated, not hand-written: `/api/v1/docs-json` is the canonical contract the frontend code-gens its client from. Give response DTOs proper `@Api*Response({ type })` or the frontend client is wrong.
-- Each feature module = `controller/service/dto/*.schema.ts` plus a `*.module.ts` registered in `src/app.module.ts`.
+- Cross-cutting: `src/common/auth/`, `src/common/database/`, `src/common/health/`, `src/common/utils/`, and `src/config/`.
+- Registered feature modules: `auth`, `users`, `roles`, `permissions`, `shops`, `customers`, `riders`, `orders`, `townships`, `delivery-partners` (permission module `partners`), `ways`, `reports`, and `shop-portal`.
+- `returns`, `payments`, and `notifications` are reserved permission-catalog modules only; there are no corresponding feature modules yet.
+- Each feature owns its controller/service/DTOs and schema. Every new table must be re-exported from `src/common/database/schema.ts` or Drizzle Kit will not see it.
+- Controllers use `@Controller({ path: 'x', version: '1' })`; all routes are under `/api/v1`. `/api/v1/docs-json` is the canonical generated OpenAPI contract; response DTOs need accurate `@Api*Response({ type })` metadata.
 
-## Migrations gotchas (hard-earned)
+## Conventions
 
-- Migrations apply on every `start:dev` bootstrap (DatabaseService.onApplicationBootstrap) AND via `db:migrate`. A running dev server will auto-apply freshly generated migrations — stop it (`kill $(pgrep -f "delivery_solution/d_api")`) before resetting schema state.
-- drizzle bookkeeping lives in the Postgres `drizzle` schema (`drizzle.__drizzle_migrations`), not `public`. Don't delete `drizzle/meta/*` or a generated SQL file: stale journal/snapshot makes `db:migrate` replay SQL and fail with an opaque "already exists" (exit 1). Recovery for the dev DB:
+- `OrderStateService` owns all order state transitions and status-history writes. Create the initial state and call `recordInitialStateInTransaction` in the same transaction; never change status through an ordinary order update or write transitions outside this service.
+- Money is SQL `numeric` and decimal strings at TypeScript/API boundaries; never use JavaScript floating-point arithmetic for money.
+- Business-day boundaries and date grouping use `APP_TIMEZONE`.
+- Shop-portal responses use dedicated shop DTOs. Scope every shop query using the `shopId` on the authenticated user's record, never a client-supplied shop id.
+- CSV/XLSX exports go through the formula-injection guard in `src/reports/report-export.util.ts`.
+- Partner-assigned orders never have a way or rider commission; preserve the schema constraint and clear `wayId` when assigning a partner.
+- Relative ESM imports end in `.js`; every new schema table is re-exported from the central database schema.
+
+## Migrations gotchas
+
+- `start:dev` applies migrations on bootstrap; `pnpm db:migrate` applies them directly. Stop a running dev server before resetting schema state.
+- Drizzle bookkeeping is in `drizzle.__drizzle_migrations`, not `public`. Do not delete `drizzle/meta/*` or generated SQL; stale metadata can make migrations replay.
+- For a clean local reset use `pnpm db:reset`. To inspect tables, use the Compose service rather than a generated container name:
   ```bash
-  docker exec d_api-postgres-1 psql -U delivery_user -d delivery_db \
-    -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS drizzle CASCADE;'
-  pnpm db:migrate
+  docker compose exec -T postgres psql -U delivery_user -d delivery_db -c "\\dt"
   ```
-- Inspect state with `docker exec d_api-postgres-1 psql -U delivery_user -d delivery_db -c "\dt"`.
-- Use `pnpm db:generate` for schema-diff migrations. For data-only/custom SQL migrations, create the file and journal entry with Drizzle Kit's custom generator (`pnpm run db:generate --custom --name <descriptive_name>`), then put the SQL into its generated file. Never hand-create migration files or edit `drizzle/meta/_journal.json` or snapshots. Keep custom data migrations idempotent where possible, and verify with `pnpm db:migrate` plus a follow-up `pnpm db:generate`.
+- The reset script drops `public` and the Drizzle bookkeeping schema, then migrates and base-seeds. It is destructive.
 
 ## pnpm native-build approval
 
-`pnpm-workspace.yaml` holds build-script approvals (`allowBuilds`/`onlyBuiltDependencies` for `bcrypt`, `esbuild`). pnpm blocks postinstall builds: adding a native dependency without approving it makes `pnpm add` AND every `db:*` script fail with `[ERR_PNPM_IGNORED_BUILDS]`. Add the package there and reinstall.
-
-## Structure
-
-- `src/common/` — cross-cutting: `auth/` (global guards, decorators, seeded permission keys), `database/` (global Drizzle service), `health/` (public probe), `utils/password.util.ts`.
-- `src/auth/`, `src/users/` — Phase 1 modules (login/me/change-password; admin user CRUD).
-- Phase 2 master data (`shops`, `customers`, `riders`) and Phase 3.5 (`townships`, orders, deliveries) are implemented under `src/<domain>/`. There is **no pickups module**: packages are collected outside the system, brought to the office, then entered by office staff.
-- Order creation requires a township and explicitly selected ACTIVE rider, with no rider-township relationship. It atomically creates the `ASSIGNED` order plus its first delivery attempt/history. `GET /riders/assignable` uses `orders.create` and returns only active rider ids/names for dispatch. Township `defaultDeliveryFee` is the order-fee default; explicit order fee overrides are stored on the order.
-- Current `OrderStatus` and `DeliveryStatus` are exactly `ASSIGNED | DELIVERED | FAILED`. `FAILED → ASSIGNED` retry remains, capped at three attempts. There is no `PENDING`, `PICKED_UP`, `RECEIVED_AT_OFFICE`, `OUT_FOR_DELIVERY`, `RETURNED`, delivery `start` route, `STARTED` history event, or `startedAt` column. Do not restore any as a convenience state.
-- RIDER roles retain `deliveries.read` and `deliveries.update`, but not `orders.read` or office override permissions. `GET /rider/board` and `/rider/dashboard` are self-scoped by JWT; the board returns full detail and attempt ids only for orders whose latest attempt is assigned to the authenticated rider. Office assignment/reassignment and history remain office operations.
-- `APP_TIMEZONE` defaults to `Asia/Yangon` and drives date-boundary calculations for rider board/dashboard. The daily custody/sign-out/return loop and 5-of-10 rule are **Phase 3.6 deferrals**, not represented in the current schema or statuses.
-- Office dashboard is implemented as a read-only aggregate API gated by `reports.read` (OWNER/ADMIN/OFFICER allowed; RIDER denied). Follow `PLAN.md` (“Office dashboard — first slice COMPLETE”) for metric/date semantics. Do not expose office-wide data to RIDER or label status-derived COD sums as collected/reconciled funds; no on-time or custody metrics are supported by current data.
-- When e2e tests modify role grants and restore shared-DB state, their restored OFFICER grant set must include `reports.read`; keep test cleanup aligned with the approved default role grants in `scripts/seed.ts`.
-- Phase 4 pickups are deleted outright. Phase 6 returns + reconciliation is domain-preflight blocked; notifications/Viber and reports remain later phases. The implementation roadmap is `PLAN.md`.
+`pnpm-workspace.yaml` holds build-script approvals for `bcrypt` and `esbuild`. Approve any new package with install scripts there or pnpm may block installs and database scripts.

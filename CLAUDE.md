@@ -1,139 +1,128 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code and coding agents working in this repository.
 
-## Project
+## Project and phase status
 
-NestJS 12 (Express) + TypeScript API for a single delivery company's operations: shops, customers, riders, townships, orders, and deliveries. Packages are collected outside the system and entered by office staff after arriving at the office; there is no pickup module. Postgres 18/Drizzle ORM, Redis (future jobs), Swagger, Vitest. Single package, pnpm workspaces, ESM under `nodenext`. Only commit/push when the user explicitly asks.
+NestJS 12 (Express) + TypeScript API for one delivery company's operations. PostgreSQL 18/Drizzle, Redis, Swagger, Vitest; single pnpm package using ESM under `nodenext`. Only commit or push when explicitly asked.
 
-Phase status (roadmap in `PLAN.md`): Foundation ✅, Phase 1 (Users/Auth/RBAC) ✅, Phase 2 master data ✅, Phase 3.5 townships/rider board ✅ (original round-robin flow superseded by explicit office assignment), office dashboard first slice ✅. Phase 4 pickups are deleted. Phase 5 delivery operations are partial; Phase 3.6 daily custody is deferred; Phase 6 returns/COD/reconciliation is domain-preflight blocked. Notifications and broader reports remain later phases.
-
-**Current delivery invariants:** office creates an order only after the package reaches the office. `POST /orders` requires a township and explicitly selected ACTIVE `riderId`; township does not constrain assignment. The transaction creates the `ASSIGNED` order and its initial delivery attempt/history atomically. Township `defaultDeliveryFee` is the fee default when the request omits a fee; an explicit order fee is stored as an order-specific value. Order and delivery statuses are exactly `ASSIGNED | DELIVERED | FAILED`; rider completion/failure acts directly from `ASSIGNED`. `FAILED → ASSIGNED` retry remains capped at three attempts. Do not restore `PENDING`, `PICKED_UP`, `RECEIVED_AT_OFFICE`, `OUT_FOR_DELIVERY`, `RETURNED`, a start route/event, or `startedAt` as convenience states. `rider_townships` and `township_rotation` are removed.
-
-**Rider security:** riders use `GET /rider/board` and `/rider/dashboard`, self-scoped from JWT with `deliveries.read`. The board includes only orders whose latest delivery attempt is assigned to the authenticated rider; there are no colleague rows or redaction path. Riders must not have `orders.read`; office order/history uses `orders.read`, and office reassign uses `orders.update`. `GET /riders/assignable` uses the existing `orders.create` permission and returns only active rider ids/names. `APP_TIMEZONE` defaults to `Asia/Yangon` and drives rider date boundaries. Shift/custody-return and the 5-of-10 rule are not represented in the current schema.
-
-**Office dashboard:** `GET /api/v1/office/dashboard` is a read-only aggregate gated by `reports.read` for OWNER/ADMIN/OFFICER; RIDER is denied. Follow `PLAN.md` for selected-date attempt metrics and current open-work semantics. COD status sums are not verified collections; on-time and custody metrics are unsupported by current data.
+Foundation, Phase 1 (Users/Auth/RBAC), and Phase 2 (master data) are complete. Phases 3–5 are superseded by `docs/delivery-workflow-v2.md`; workflow v2 phases A–E are complete: schema/state/RBAC, office orders and approval, ways/commission, reports/dashboards, and shop portal. Phase 6 (returns/payment ledger/reconciliation) remains blocked; Phase 7 (notifications/Viber) is later; Phase 8 reports are partly delivered by phases D/E and need further scope for any additional slices. See `README.md`, `PLAN.md`, and the workflow document's As built section.
 
 ## Skills — invoke before task-specific code
 
-Check this table at the start of every task; if a row matches, invoke the skill **before** writing code. Multiple can apply; each applies regardless of change size.
+| Task touches | Invoke |
+|---|---|
+| Any frontend/UI work | `ui-ux-pro-max` |
+| Landing/marketing pages or aesthetic polish | `taste` on top of `ui-ux-pro-max` |
+| Charts, graphs, KPI tiles, data visualization | `dataviz` before the first chart line |
+| Logos, decks, icon sets, brand/social assets | `ui-ux-pro-max:design` |
+| Library/framework/SDK/CLI docs question | Context7 (`ctx7` CLI per local rules) |
+| Code review / quality pass on changes | `code-review` |
 
-| Task touches                                                                          | Invoke                                         |
-| ------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Any frontend/UI work (dashboards, forms, CRUD screens, components, responsive layout) | `ui-ux-pro-max`                                |
-| Landing/marketing pages, visual polish, aesthetic direction, redesigns                | `taste` (aesthetic, on top of `ui-ux-pro-max`) |
-| Charts, graphs, KPI tiles, data visualization, analytics dashboards                   | `data-visualization` (before first visualization line) |
-| Logos, banners, pitch decks, icon sets, brand/social assets                           | `ui-ux-pro-max:design`                         |
-| Library/framework/SDK/CLI docs question                                               | `ctx7` CLI (see `~/.claude/rules/context7.md`) |
-| Code review / quality pass on changes                                                 | `code-review`                                  |
+## Docs & memory sync
 
-Utility-only work (pure API/backend/config) → no frontend skill needed. If unsure, invoke — an unneeded skill costs little.
+When a durable API, RBAC, schema, or convention change would mislead a fresh session, update `CLAUDE.md` and any `.claude/agents/*.md` that describe the affected behavior in the same change. Update persistent memory when the local project workflow requires it. Don't alter unrelated instructions.
 
 ## Type safety / code quality (mandatory)
 
-- **No `any`** — this is the project's core quality bar. Type everything: DTOs for every request/response, explicit return types, `unknown` at trust boundaries instead of `any`. `@typescript-eslint/no-explicit-any` is on (recommended set) — keep it there.
-- No `@ts-ignore` / `@ts-expect-error` / bare non-null assertions (`!`) to silence the compiler. If codegen (CodeGen docs) or a DB driver must be cast, prefer `unknown` → narrow → type-guard (e.g. `isUniqueViolation`) over `as any`.
-- `strict` is on in `tsconfig.json` — preserved for all new code. Use `satisfies` for const arrays constrained to a broader type.
-- Drizzle: `.$inferSelect`/`.$inferInsert` for row shapes, never loose `Record<string, unknown>` return types from services (resulting swagger clients are thin).
+- No `any`; type all request/response DTOs and explicit return types. Use `unknown` at trust boundaries.
+- No `@ts-ignore`, `@ts-expect-error`, or bare non-null assertions to silence the compiler. Narrow unknown values with type guards.
+- Keep strict TypeScript enabled and use `satisfies` for bounded const arrays.
+- Drizzle rows use `.$inferSelect`/`.$inferInsert`; avoid bare `Record<string, unknown>` service responses.
+- ESM `nodenext`: relative imports must end in `.js`.
 
-## Docs & memory sync (mandatory)
+## Naming conventions
 
-When a meaningful, durable change lands — API contract (endpoints, DTO shapes, response types), RBAC model, schema, conventions, or anything a fresh session would get wrong — update the files that describe it **in the same change**:
-
-- `CLAUDE.md` — conventions, architecture, migration gotchas.
-- `.claude/agents/*.md` — if an agent's instructions reference the changed behavior.
-- Persistent memory (`~/.claude/projects/.../memory/`) — non-obvious decisions/facts a later session can't derive from code or git history.
-
-Skip trivial edits (typos, formatting, one-off fixes). Test: _would a fresh session — or the frontend team — act on stale info because I didn't update it?_ If yes, update.
-
-## Naming conventions (mandatory)
-
-- **No abbreviations.** Full words: `permission`/`permissions`, not `p`/`perm`; `role` not `r`; `user` not `u`; `description` not `desc`. Single-letter names only for loop indexes / SQL aliases.
-- **Files** — kebab-case + typed suffix: `users.service.ts`, `permissions.controller.ts`, `role-permissions.schema.ts`, `permission-keys.ts`, `create-user.dto.ts`, `permissions.module.ts`. Tests: `*.spec.ts`, `*.e2e-spec.ts`.
-- **Classes / DTOs** — PascalCase, suffix the kind: `PermissionService`, `RolesController`, `LoginResponseDto`, `UserStatus`.
-- **Functions & methods** — camelCase, verb-first: `getEffectivePermissions`, `setRoleGrants`, `createPermission`, `roleOrThrow`.
-- **Variables** — camelCase, descriptive; prefer `permissions` (array), `role` (single), `user` over short names.
-- **Constants** — UPPER_SNAKE_CASE: `CACHE_TTL_MS`, `NAME_PATTERN`, `PERMISSION_KEYS`.
-- **Booleans** — `is`/`has`/`can` prefix: `isSystem`, `hasPermission`, `canAssign`.
-- **Types & type aliases** — PascalCase, singular: `PermissionKey`, `UserStatus`. DB rows via `.$inferSelect`.
-- **DB schema** — tables/columns `snake_case` (`is_system`, `role_id`, `created_at`); Drizzle field names camelCase mirrors of the column.
+- Prefer full words over abbreviations, except loop indexes and SQL aliases.
+- Files use kebab-case with typed suffixes (`orders.service.ts`, `update-order.dto.ts`); tests use `*.spec.ts` or `*.e2e-spec.ts`.
+- Classes/DTOs use PascalCase with a kind suffix; functions and methods use verb-first camelCase; variables are descriptive camelCase; constants are `UPPER_SNAKE_CASE`.
+- Booleans use `is`/`has`/`can` prefixes. Types are singular PascalCase. Database tables/columns use snake_case and Drizzle properties use camelCase.
 
 ## Commands
 
 ```bash
 pnpm install
-cp .env.example .env
+# Copy .env.example to .env, then set DATABASE_URL and JWT_SECRET.
 docker compose up -d
-
-pnpm start:dev     # watch-mode server on :3000; auto-runs migrations on bootstrap
+pnpm db:seed
+pnpm db:seed:demo
+pnpm start:dev
 ```
 
-Quality gate (run all four before considering work done):
+Quality gate:
 
 ```bash
-pnpm lint        # ESLint flat config, src + test
-pnpm build       # nest build -> dist/
-pnpm test        # Vitest unit (**/*.spec.ts) — mocked DB, no containers
-pnpm test:e2e    # Vitest e2e (test/*.e2e-spec.ts) — hits the REAL docker Postgres
+pnpm typecheck
+pnpm lint
+pnpm build
+pnpm test
+pnpm test:e2e
 ```
-
-Single test file / filter: `pnpm test -- <path>` (e.g. `pnpm test -- src/users/users.service.spec.ts`), or `pnpm test -- -t "<name fragment>"`.
 
 Database scripts:
 
 ```bash
-pnpm db:generate   # Drizzle migration from schemas
-pnpm run db:generate --custom --name <descriptive_name> # custom SQL/data-only migration scaffold
-pnpm db:migrate    # apply migrations
-pnpm db:seed       # idempotent seed (OWNER + 2 admins; SEED_OWNER_* env override)
-pnpm db:studio     # Drizzle Studio
-pnpm db:reset      # DROP ALL → migrate → seed (clean slate)
+pnpm db:generate
+pnpm db:migrate
+pnpm db:seed          # base catalog, roles, owner/admin accounts
+pnpm db:seed:demo     # non-production demo fixtures
+pnpm db:studio
+pnpm db:reset         # destructive: Compose Postgres reset, migrations, base seed
 ```
 
-e2e requires `docker compose up -d` (Postgres publishes on host port from `DB_PORT`); it writes to the shared dev DB and cleans up — never run e2e against a DB you care about. e2e uses unique emails (`${name}-${Date.now()}@e2e.local`) so parallel runs don't collide.
+`db:reset` uses `docker compose exec -T postgres`, drops the `public` and Drizzle bookkeeping schemas, then migrates and base-seeds. Demo fixtures are separate. E2E tests use the real Compose Postgres DB and write temporary data; never run them against a database you care about.
 
-## Environment (easy to get wrong)
+Demo login emails created by `pnpm db:seed:demo`: `rider1@demo.delivery.local`, `rider2@demo.delivery.local`, `shop1@demo.delivery.local`, `shop2@demo.delivery.local`, and `shop3@demo.delivery.local`.
 
-- `.env` (gitignored) intentionally differs from `.env.example`: local Postgres publishes on host port **5433**, the example uses **5432**. Never overwrite `.env` from `.env.example`. If local Postgres already uses 5432, set `DB_PORT`/`DATABASE_URL` to 5433 in `.env`.
-- App never reads `process.env` directly — everything flows through `@nestjs/config` validated in `src/config/env.validation.ts` (fails boot if `DATABASE_URL` or `JWT_SECRET` missing). `drizzle.config.ts` reads `DATABASE_URL` itself.
-- `.env.local` is loaded _before_ `.env` (both read by ConfigModule and drizzle).
+## Environment
+
+- `.env` is gitignored and may differ from `.env.example`; local Postgres commonly publishes on host port 5433 while the example uses 5432. Inspect before copying or overwriting it.
+- `APP_TIMEZONE` defaults to `Asia/Yangon`; it defines business-day boundaries and report date grouping.
+- App configuration is validated in `src/config/env.validation.ts` (`DATABASE_URL` and `JWT_SECRET` required); `drizzle.config.ts` loads env files itself. `.env.local` loads before `.env`.
 
 ## Architecture
 
-- **Wiring** (`src/main.ts` → `setup-app.ts`): global prefix `/api`, URI versioning `v1`, global `ValidationPipe` (whitelist + forbidNonWhitelisted + transform). All routes live under `/api/v1/...`. Swagger mounted at `/api/v1/docs`; `/api/v1/docs-json` is the canonical OpenAPI contract the frontend code-gens its TypeScript client from.
-- **`src/app.module.ts`** registers two global guards (`APP_GUARD` order matters): `JwtAuthGuard` then `PermissionsGuard`. Every route requires a `Bearer` JWT unless marked `@Public()`.
-- **`src/common/`** — cross-cutting infra shared by all domains:
-  - `database/` — global Drizzle/Postgres `DatabaseService`; `schema.ts` is the central re-export point and the ONLY schema imports `db:generate` sees.
-  - `auth/` — global guards, decorators (`@Public()`, `@RequirePermissions()`, `@CurrentUser()`), and `permission-keys.ts` (fixed permission catalog); effective role grants are stored in `role_permissions` and default grants are seeded in `scripts/seed.ts`.
-  - `health/` — public probe (`GET /api/v1/health`).
-- **Feature modules** (`src/auth/`, `src/users/`, `src/shops/`, `src/customers/`, `src/riders/`, `src/townships/`, `src/orders/`, `src/deliveries/`) each own controller/service/DTOs plus any domain schema/module files.
+- `src/main.ts` / `src/setup-app.ts`: `/api` prefix, URI version `v1`, validation pipe, CORS, Swagger. OpenAPI is generated at `/api/v1/docs-json` and is the canonical frontend contract.
+- `src/app.module.ts` registers global guards in order: `JwtAuthGuard`, then `PermissionsGuard`.
+- Shared code: `src/common/auth/`, `src/common/database/`, `src/common/health/`, `src/common/utils/`, and `src/config/`.
+- Registered feature modules: `auth`, `users`, `roles`, `permissions`, `shops`, `customers`, `riders`, `orders`, `townships`, `delivery-partners`, `ways`, `reports`, and `shop-portal`. `delivery-partners` uses the permission module name `partners`.
+- Permission catalog entries for `returns`, `payments`, and `notifications` exist, but those feature modules are not implemented.
+- Feature schemas live with their module. Re-export every new table from `src/common/database/schema.ts`; that is the central schema entry used by Drizzle Kit.
 
-## Conventions that differ from Nest defaults
+## RBAC
 
-- **ESM `nodenext`**: relative imports MUST end in `.js` (`import { users } from '../../users/user.schema.js'`). Missing extension = tsc build error.
-- **Route guard** (from `src/common/auth/auth.guard.ts`): token's `sub` must match an active user; guard rebuilds the user from DB — don't keep stale copies of `req.user`.
-- **RBAC is a fixed module×action catalog** (spatie-style, three tables `roles`/`permissions`/`role_permissions` + `users.role_id`): Owner/Admin assign, per role, which modules a role can create/read/update/delete/export/import (view≡read, edit≡update). The catalog is **seeded and read-only** — `src/common/auth/permission-keys.ts` is the single source of truth (`MODULE_ACTIONS` + exact `PermissionKey` union), currently 12 modules / 62 keys. There is no `pickups` module or `deliveries.claim` permission. No runtime key creation — `POST /permissions` and `DELETE /permissions/:name` are removed; adding a module is a code change to `MODULE_ACTIONS` + re-seed.
-  - `is_system` roles (OWNER) bypass grant rows entirely (shortcircuit in `PermissionService.getEffectivePermissions`) — never grant rows for OWNER.
-  - Scope: caller can only grant a subset of its own effective permissions; no self-modification; ADMIN cannot touch OWNER/ADMIN. `@RequirePermissions('x.y')` **fails closed** for unknown keys.
-  - `permissions.name` format `module.action` (lowercase); `module` is a stored column. `roles.name` UPPER_CASE, immutable after create; delete-role blocked while `userCount > 0`.
-- **Never expose `passwordHash`/`password_hash`** in any response; passwords hashed with bcrypt (`src/common/utils/password.util.ts`). Auth is access-token only; `POST /api/v1/auth/login` → JWT in `Authorization: Bearer`; route guards rebuild the user from DB — token `sub` must match an active user.
-- Controllers use `@Controller({ path: 'x', version: '1' })`.
-- OpenAPI is generated, not hand-written: response DTOs need correct `@Api*Response({ type })` or the frontend client (generated from `/api/v1/docs-json`) is wrong.
-- Drizzle tables live with their feature module; every NEW table MUST be re-exported from `src/common/database/schema.ts` (`export * from '../../<module>/<name>.schema.js'`) or `db:generate` silently won't see it. Business tables use `id uuid default gen_random_uuid()` + `created_at`/`updated_at` timestamptz (drizzle defaults), matching `users`.
+The catalog in `src/common/auth/permission-keys.ts` is fixed and seeded: **17 modules / 87 keys**. Modules: `users`, `roles`, `permissions`, `shops`, `customers`, `riders`, `orders`, `deliveries`, `townships`, `partners`, `ways`, `shop-portal`, `shop-reports`, `returns`, `payments`, `notifications`, `reports`. The catalog has read-only API access; role grant sets are replaceable with `permissions.update`, but keys cannot be created/deleted at runtime.
 
-## Migrations gotchas (hard-earned)
+Seeded roles and grants from `scripts/seed.ts`:
 
-- Migrations auto-apply on every `start:dev` bootstrap AND via `db:migrate`. A running dev server will apply freshly generated migrations — stop it (`kill $(pgrep -f "delivery_solution/d_api")`) before resetting schema state.
-- Drizzle bookkeeping lives in the Postgres **`drizzle`** schema (`drizzle.__drizzle_migrations`), not `public`. Don't delete `drizzle/meta/*` or a generated SQL file: a stale journal/snapshot makes `db:migrate` replay SQL and fail with an opaque "already exists". Recovery for the dev DB:
+- `OWNER`: `is_system=true`; effective grant is the entire catalog, with no grant rows required.
+- `ADMIN`: all catalog keys.
+- `OFFICER`: `orders.create/read/update/cancel/update_costs/update_after_approval`; `deliveries.read/update/approve`; `townships.read/create/update/delete`; `partners.read/create/update/delete`; `ways.create/read/update`; `reports.read/export`.
+- `RIDER`: `deliveries.read`, `deliveries.update`.
+- `SHOP`: `shop-portal.read`, `shop-reports.export`.
+
+Every route requires a JWT unless `@Public()`. Protected routes need explicit `@RequirePermissions('module.action')`; unknown/non-granted permissions fail closed. Never expose `passwordHash`.
+
+## Conventions
+
+- `OrderStateService` owns all order state transitions and status-history writes. Order creation sets its initial status in the same transaction as `recordInitialStateInTransaction`; ordinary edits must not write status, and all subsequent transitions go through `OrderStateService`.
+- Money is SQL `numeric` and decimal strings at TypeScript/API boundaries; never use JavaScript floats for money.
+- Business-day boundaries and date grouping always use `APP_TIMEZONE`.
+- Shop-portal responses use dedicated DTOs. The shop scope always comes from the authenticated user's `shopId`, never a client-supplied shop id.
+- CSV/XLSX exports use the formula-injection guard in `src/reports/report-export.util.ts`.
+- Partner-assigned orders never have a way or rider commission; preserve `orders_partner_way_consistency_check` and clear `wayId` when changing to a partner.
+- Controllers use `@Controller({ path: 'x', version: '1' })`; response DTOs need accurate `@Api*Response({ type })` metadata.
+
+## Migrations gotchas
+
+- `start:dev` auto-applies migrations on bootstrap; `pnpm db:migrate` applies them directly. Stop a running dev server before resetting schema state.
+- Drizzle bookkeeping is in `drizzle.__drizzle_migrations`, not `public`. Never delete `drizzle/meta/*` or generated SQL; stale metadata can make migrations replay.
+- Use `pnpm db:reset` for a clean local reset. Inspect tables through the Compose service, not a hardcoded container name:
   ```bash
-  docker exec d_api-postgres-1 psql -U delivery_user -d delivery_db \
-    -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS drizzle CASCADE;'
-  pnpm db:migrate
+  docker compose exec -T postgres psql -U delivery_user -d delivery_db -c "\\dt"
   ```
-- Inspect state: `docker exec d_api-postgres-1 psql -U delivery_user -d delivery_db -c "\dt"`.
-- Migration `0016_mysterious_karen_page.sql` removes `rider_townships` and `township_rotation`, adds `townships.default_delivery_fee`, and backfills existing townships with `0.00`. New township API creation requires an explicit fee.
-- Use `pnpm db:generate` for schema-diff migrations. For data-only/custom SQL changes (which do not alter `schema.ts`), generate the migration scaffold and journal/snapshot with `pnpm run db:generate --custom --name <descriptive_name>`, then write the SQL into that generated file. Never hand-create migration files or edit `drizzle/meta/_journal.json` or snapshots. Prefer idempotent data migrations and verify with `pnpm db:migrate` followed by `pnpm db:generate`.
+- `db:reset` is destructive: it drops `public` and the `drizzle` schema, then migrates and base-seeds.
 
 ## pnpm native-build approval
 
-`pnpm-workspace.yaml` holds build-script approvals (`bcrypt`, `esbuild`). pnpm blocks postinstall builds — adding an unapproved native dependency makes `pnpm add` AND every `db:*` script fail with `[ERR_PNPM_IGNORED_BUILDS]`. Add the package there and reinstall.
+`pnpm-workspace.yaml` approves build scripts for `bcrypt` and `esbuild`. Approve any new package with install scripts there or pnpm may block installs and database scripts.

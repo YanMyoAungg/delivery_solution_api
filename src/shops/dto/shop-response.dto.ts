@@ -17,15 +17,14 @@ export class ShopResponseDto {
   @ApiPropertyOptional({ example: 'Deliver before 6pm', nullable: true })
   notes: string | null;
 
-  @ApiProperty({
-    enum: SHOP_CHANNEL_TYPES,
-    enumName: 'ShopChannelType',
-    example: 'VIBER',
-  })
+  @ApiProperty({ enum: SHOP_CHANNEL_TYPES, enumName: 'ShopChannelType' })
   channelType: ShopChannelType;
 
   @ApiProperty({ example: 'YangonCentralShop' })
   channelName: string;
+
+  @ApiProperty({ example: false })
+  hasLogin: boolean;
 
   @ApiProperty({ example: '2026-09-18T10:00:00.000Z' })
   createdAt: string;

@@ -60,6 +60,7 @@ class RawJwtAuthGuard implements CanActivate {
         name: true,
         email: true,
         roleId: true,
+        shopId: true,
         status: true,
         passwordChangedAt: true,
       },
@@ -85,6 +86,7 @@ class RawJwtAuthGuard implements CanActivate {
       name: row.name,
       email: row.email,
       roleId: row.roleId,
+      shopId: row.shopId,
       role: row.role.name,
     };
 

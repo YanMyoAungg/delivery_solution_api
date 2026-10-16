@@ -16,6 +16,7 @@ function baseUser(overrides: Record<string, unknown> = {}) {
     email: 'officer@delivery.local',
     phone: '09123',
     roleId: 'r-officer',
+    shopId: null,
     role: { name: 'OFFICER' },
     status: 'ACTIVE',
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -31,8 +32,10 @@ describe('UsersService', () => {
     findFirst: vi.fn(),
     findMany: vi.fn(),
   };
+  const queryRoles = { findFirst: vi.fn() };
+  const queryShops = { findFirst: vi.fn() };
   const db = {
-    query: { users: queryUsers },
+    query: { users: queryUsers, roles: queryRoles, shops: queryShops },
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
@@ -52,6 +55,7 @@ describe('UsersService', () => {
       }),
     });
     permissions.assertCallerCanAssign.mockResolvedValue(undefined);
+    queryRoles.findFirst.mockResolvedValue({ id: 'r-officer', name: 'OFFICER' });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -110,6 +114,26 @@ describe('UsersService', () => {
   });
 
   describe('create', () => {
+    it('requires a shopId for SHOP users', async () => {
+      queryRoles.findFirst.mockResolvedValue({ id: 'r-shop', name: 'SHOP' });
+      await expect(service.create({
+        name: 'Shop user',
+        email: 'shop@delivery.local',
+        roleId: 'r-shop',
+        password: 'password1',
+      }, 'caller-role-id')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rejects a shopId for non-SHOP users', async () => {
+      await expect(service.create({
+        name: 'Officer',
+        email: 'officer@delivery.local',
+        roleId: 'r-officer',
+        shopId: '11111111-1111-4111-8111-111111111111',
+        password: 'password1',
+      }, 'caller-role-id')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('hashes the password, lowercases the email and persists the user', async () => {
       queryUsers.findFirst.mockResolvedValueOnce(undefined); // assertEmailAvailable
       db.insert.mockReturnValue({
@@ -158,6 +182,109 @@ describe('UsersService', () => {
       ).rejects.toBeInstanceOf(ConflictException);
       expect(db.insert).not.toHaveBeenCalled();
     });
+
+    it('maps the email constraint to the email conflict message', async () => {
+      queryUsers.findFirst.mockResolvedValueOnce(undefined);
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue({
+            cause: { code: '23505', constraint: 'users_email_unique' },
+          }),
+        }),
+      });
+
+      await expect(
+        service.create(
+          {
+            name: 'Officer',
+            email: 'Officer@Delivery.Local',
+            roleId: 'r-officer',
+            password: 'password1',
+          },
+          'caller-role-id',
+        ),
+      ).rejects.toThrow("User with email 'officer@delivery.local' already exists");
+    });
+
+    it('maps the shop constraint to the shop login conflict message', async () => {
+      queryRoles.findFirst.mockResolvedValue({ id: 'r-shop', name: 'SHOP' });
+      queryUsers.findFirst
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined);
+      queryShops.findFirst.mockResolvedValue({
+        id: 'shop-id',
+        name: 'Central Shop',
+      });
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue({
+            cause: { code: '23505', constraint_name: 'users_shop_unique' },
+          }),
+        }),
+      });
+
+      await expect(
+        service.create(
+          {
+            name: 'Shop user',
+            email: 'shop@delivery.local',
+            roleId: 'r-shop',
+            shopId: 'shop-id',
+            password: 'password1',
+          },
+          'caller-role-id',
+        ),
+      ).rejects.toThrow("Shop 'Central Shop' already has a login user");
+    });
+
+    it('pre-checks whether a shop already has a login', async () => {
+      queryRoles.findFirst.mockResolvedValue({ id: 'r-shop', name: 'SHOP' });
+      queryUsers.findFirst
+        .mockResolvedValueOnce({ id: 'existing-login' })
+        .mockResolvedValueOnce(undefined);
+      queryShops.findFirst.mockResolvedValue({
+        id: 'shop-id',
+        name: 'Central Shop',
+      });
+
+      await expect(
+        service.create(
+          {
+            name: 'Shop user',
+            email: 'shop@delivery.local',
+            roleId: 'r-shop',
+            shopId: 'shop-id',
+            password: 'password1',
+          },
+          'caller-role-id',
+        ),
+      ).rejects.toThrow("Shop 'Central Shop' already has a login user");
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('uses a generic conflict for an unrecognized unique constraint', async () => {
+      queryUsers.findFirst.mockResolvedValueOnce(undefined);
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue({
+            code: '23505',
+            constraint: 'users_unrecognized_unique',
+          }),
+        }),
+      });
+
+      await expect(
+        service.create(
+          {
+            name: 'Officer',
+            email: 'officer@delivery.local',
+            roleId: 'r-officer',
+            password: 'password1',
+          },
+          'caller-role-id',
+        ),
+      ).rejects.toThrow('A record with these details already exists');
+    });
   });
 
   describe('update', () => {
@@ -185,6 +312,72 @@ describe('UsersService', () => {
       await expect(
         service.update('id', { roleId: 'r-owner' }, 'c'),
       ).rejects.toThrow('Forbidden');
+    });
+
+    it('maps the email constraint to the email conflict message', async () => {
+      queryUsers.findFirst
+        .mockResolvedValueOnce(baseUser())
+        .mockResolvedValueOnce(undefined);
+      db.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockRejectedValue({
+            code: '23505',
+            constraint: 'users_email_unique',
+          }),
+        }),
+      });
+
+      await expect(
+        service.update('id', { email: 'duplicate@delivery.local' }, 'c'),
+      ).rejects.toThrow(
+        "User with email 'duplicate@delivery.local' already exists",
+      );
+    });
+
+    it('maps the shop constraint to the shop login conflict message', async () => {
+      queryUsers.findFirst
+        .mockResolvedValueOnce(baseUser())
+        .mockResolvedValueOnce(undefined);
+      queryRoles.findFirst.mockResolvedValue({ id: 'r-shop', name: 'SHOP' });
+      queryShops.findFirst.mockResolvedValue({
+        id: 'shop-id',
+        name: 'Central Shop',
+      });
+      db.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockRejectedValue({
+            cause: { code: '23505', constraint: 'users_shop_unique' },
+          }),
+        }),
+      });
+
+      await expect(
+        service.update(
+          'id',
+          { roleId: 'r-shop', shopId: 'shop-id' },
+          'caller-role-id',
+        ),
+      ).rejects.toThrow("Shop 'Central Shop' already has a login user");
+    });
+
+    it('pre-checks whether another user already has the requested shop', async () => {
+      queryUsers.findFirst
+        .mockResolvedValueOnce(baseUser())
+        .mockResolvedValueOnce({ id: 'existing-login' });
+      queryRoles.findFirst.mockResolvedValue({ id: 'r-shop', name: 'SHOP' });
+      queryShops.findFirst.mockResolvedValue({
+        id: 'shop-id',
+        name: 'Central Shop',
+      });
+
+      await expect(
+        service.update(
+          'id',
+          { roleId: 'r-shop', shopId: 'shop-id' },
+          'caller-role-id',
+        ),
+      ).rejects.toThrow("Shop 'Central Shop' already has a login user");
+      expect(db.update).not.toHaveBeenCalled();
     });
   });
 

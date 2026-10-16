@@ -1,23 +1,30 @@
 import { relations } from 'drizzle-orm';
-import { users } from '../../users/user.schema.js';
-import { roles } from '../../roles/roles.schema.js';
-import { permissions } from '../../permissions/permissions.schema.js';
-import { role_permissions } from '../../roles/role-permissions.schema.js';
-import { orders } from '../../orders/order.schema.js';
-import { shops } from '../../shops/shop.schema.js';
-import { riders } from '../../riders/rider.schema.js';
+import { customers } from '../../customers/customer.schema.js';
+import { deliveryPartners } from '../../delivery-partners/delivery-partner.schema.js';
+import { orderFieldAudit } from '../../orders/order-field-audit.schema.js';
 import { orderStatusHistory } from '../../orders/order-status-history.schema.js';
+import { orders } from '../../orders/order.schema.js';
+import { permissions } from '../../permissions/permissions.schema.js';
+import { riders } from '../../riders/rider.schema.js';
+import { role_permissions } from '../../roles/role-permissions.schema.js';
+import { roles } from '../../roles/roles.schema.js';
+import { shops } from '../../shops/shop.schema.js';
 import { townships } from '../../townships/township.schema.js';
-import {
-  deliveryAttempts,
-  deliveryAttemptHistory,
-} from '../../deliveries/delivery.schema.js';
+import { users } from '../../users/user.schema.js';
+import { ways } from '../../ways/way.schema.js';
 
-export const usersRelations = relations(users, ({ one }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   role: one(roles, {
     fields: [users.roleId],
     references: [roles.id],
   }),
+  shop: one(shops, {
+    fields: [users.shopId],
+    references: [shops.id],
+  }),
+  orderStatusHistories: many(orderStatusHistory),
+  orderFieldAudits: many(orderFieldAudit),
+  waysPaidWithoutDelivery: many(ways),
 }));
 
 export const rolesRelations = relations(roles, ({ many }) => ({
@@ -43,11 +50,40 @@ export const rolePermissionsRelations = relations(
   }),
 );
 
+export const shopsRelations = relations(shops, ({ many }) => ({
+  users: many(users),
+  orders: many(orders),
+}));
+
+export const customersRelations = relations(customers, ({ many }) => ({
+  orders: many(orders),
+}));
+
+export const ridersRelations = relations(riders, ({ one, many }) => ({
+  user: one(users, { fields: [riders.userId], references: [users.id] }),
+  orders: many(orders),
+  defaultTownships: many(townships),
+  ways: many(ways),
+}));
+
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   shop: one(shops, { fields: [orders.shopId], references: [shops.id] }),
-  township: one(townships, { fields: [orders.townshipId], references: [townships.id] }),
+  customer: one(customers, {
+    fields: [orders.customerId],
+    references: [customers.id],
+  }),
+  township: one(townships, {
+    fields: [orders.townshipId],
+    references: [townships.id],
+  }),
+  rider: one(riders, { fields: [orders.riderId], references: [riders.id] }),
+  partner: one(deliveryPartners, {
+    fields: [orders.partnerId],
+    references: [deliveryPartners.id],
+  }),
+  way: one(ways, { fields: [orders.wayId], references: [ways.id] }),
   history: many(orderStatusHistory),
-  deliveryAttempts: many(deliveryAttempts),
+  fieldAudit: many(orderFieldAudit),
 }));
 
 export const orderStatusHistoryRelations = relations(
@@ -57,42 +93,52 @@ export const orderStatusHistoryRelations = relations(
       fields: [orderStatusHistory.orderId],
       references: [orders.id],
     }),
+    actor: one(users, {
+      fields: [orderStatusHistory.changedBy],
+      references: [users.id],
+    }),
   }),
 );
 
-export const townshipsRelations = relations(townships, ({ many }) => ({
+export const orderFieldAuditRelations = relations(
+  orderFieldAudit,
+  ({ one }) => ({
+    order: one(orders, {
+      fields: [orderFieldAudit.orderId],
+      references: [orders.id],
+    }),
+    actor: one(users, {
+      fields: [orderFieldAudit.actorId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const townshipsRelations = relations(townships, ({ one, many }) => ({
+  defaultRider: one(riders, {
+    fields: [townships.defaultRiderId],
+    references: [riders.id],
+  }),
+  defaultPartner: one(deliveryPartners, {
+    fields: [townships.defaultPartnerId],
+    references: [deliveryPartners.id],
+  }),
   orders: many(orders),
 }));
 
-export const deliveryAttemptsRelations = relations(
-  deliveryAttempts,
-  ({ one, many }) => ({
-    order: one(orders, {
-      fields: [deliveryAttempts.orderId],
-      references: [orders.id],
-    }),
-    rider: one(riders, {
-      fields: [deliveryAttempts.riderId],
-      references: [riders.id],
-    }),
-    assignedByUser: one(users, {
-      fields: [deliveryAttempts.assignedBy],
-      references: [users.id],
-    }),
-    history: many(deliveryAttemptHistory),
+export const deliveryPartnersRelations = relations(
+  deliveryPartners,
+  ({ many }) => ({
+    defaultTownships: many(townships),
+    orders: many(orders),
   }),
 );
 
-export const deliveryAttemptHistoryRelations = relations(
-  deliveryAttemptHistory,
-  ({ one }) => ({
-    attempt: one(deliveryAttempts, {
-      fields: [deliveryAttemptHistory.deliveryAttemptId],
-      references: [deliveryAttempts.id],
-    }),
-    actor: one(users, {
-      fields: [deliveryAttemptHistory.actorId],
-      references: [users.id],
-    }),
+export const waysRelations = relations(ways, ({ one, many }) => ({
+  rider: one(riders, { fields: [ways.riderId], references: [riders.id] }),
+  paidWithoutDeliveryBy: one(users, {
+    fields: [ways.payAnywayBy],
+    references: [users.id],
   }),
-);
+  orders: many(orders),
+}));

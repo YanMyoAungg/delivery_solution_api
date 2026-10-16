@@ -1,18 +1,13 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, Matches, MaxLength } from 'class-validator';
-import { MONEY_AMOUNT_PATTERN } from '../../common/utils/money.util.js';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, ValidateIf } from 'class-validator';
+import { TOWNSHIP_DEFAULT_ASSIGNEE_TYPES, type TownshipDefaultAssigneeType } from '../township.schema.js';
 
 export class CreateTownshipDto {
-  @ApiProperty({ example: 'Hlaing' })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  name: string;
-
-  @ApiProperty({ example: '3500.00' })
-  @IsString()
-  @Matches(MONEY_AMOUNT_PATTERN, {
-    message: 'defaultDeliveryFee must be a decimal string with up to 2 decimal places',
-  })
-  defaultDeliveryFee: string;
+  @ApiProperty() @IsString() @MaxLength(120) name: string;
+  @ApiProperty({ example: '3500.00' }) @IsString() @Matches(/^\d{1,10}(\.\d{1,2})?$/) defaultDeliveryFee: string;
+  @ApiProperty({ minimum: 0 }) @IsInt() @Min(0) leadTimeDays: number;
+  @ApiPropertyOptional({ enum: TOWNSHIP_DEFAULT_ASSIGNEE_TYPES, nullable: true })
+  @IsOptional() @IsEnum(TOWNSHIP_DEFAULT_ASSIGNEE_TYPES) defaultAssigneeType?: TownshipDefaultAssigneeType | null;
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((value: CreateTownshipDto) => value.defaultRiderId !== null) @IsOptional() @IsUUID() defaultRiderId?: string | null;
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((value: CreateTownshipDto) => value.defaultPartnerId !== null) @IsOptional() @IsUUID() defaultPartnerId?: string | null;
 }

@@ -8,6 +8,7 @@
   "type": "module",
   "scripts": {
     "build": "nest build",
+    "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -22,8 +23,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
+    "db:seed:demo": "tsx scripts/seed-demo.ts",
     "db:studio": "drizzle-kit studio",
-    "db:reset": "docker exec d_api-postgres-1 psql -U delivery_user -d delivery_db -c \"DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS drizzle CASCADE;\" && pnpm db:migrate && pnpm db:seed"
+    "db:reset": "docker compose exec -T postgres psql -U delivery_user -d delivery_db -c \"DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS drizzle CASCADE;\" && pnpm db:migrate && pnpm db:seed"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -38,7 +40,8 @@
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -37,6 +37,10 @@ describe('HealthService', () => {
 
     expect(result.status).toBe('error');
     expect(result.dependencies.database.status).toBe('down');
-    expect(result.dependencies.database.message).toBe('connection refused');
+    if (result.dependencies.database.status === 'down') {
+      expect(result.dependencies.database.message).toBe('connection refused');
+    } else {
+      expect(result.dependencies.database.status).toBe('down');
+    }
   });
 });

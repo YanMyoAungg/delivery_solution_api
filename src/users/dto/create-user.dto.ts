@@ -32,6 +32,11 @@ export class CreateUserDto {
   @IsUUID()
   roleId: string;
 
+  @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6', required: false, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  shopId?: string | null;
+
   @ApiProperty({ example: 'StrongP@ssw0rd' })
   @IsString()
   @MinLength(8)

@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
-import { isUniqueViolation } from '../common/database/is-unique-violation.js';
+import {
+  getUniqueViolationConstraint,
+  isUniqueViolation,
+} from '../common/database/is-unique-violation.js';
 import { hashPassword } from '../common/utils/password.util.js';
 import {
   normalizeEmail,
@@ -15,6 +18,8 @@ import {
 } from '../common/utils/normalize.util.js';
 import { PermissionService } from '../permissions/permissions.service.js';
 import { users } from './user.schema.js';
+import { roles } from '../roles/roles.schema.js';
+import { shops } from '../shops/shop.schema.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
 import { ListUsersQueryDto } from './dto/list-users-query.dto.js';
@@ -27,6 +32,7 @@ const SELECT_USER_COLUMNS = {
   email: true,
   phone: true,
   roleId: true,
+  shopId: true,
   status: true,
   createdAt: true,
   updatedAt: true,
@@ -52,6 +58,7 @@ export function toUserResponse(row: PublicUserRow): UserResponseDto {
     email: row.email,
     phone: row.phone,
     roleId: row.roleId,
+    shopId: row.shopId,
     role: row.role?.name ?? '',
     status: row.status,
     createdAt: row.createdAt.toISOString(),
@@ -143,6 +150,16 @@ export class UsersService {
     dto: CreateUserDto,
     callerRoleId: string,
   ): Promise<UserResponseDto> {
+    const role = await this.database.db.query.roles.findFirst({
+      where: eq(roles.id, dto.roleId),
+      columns: { id: true, name: true },
+    });
+    if (!role) throw new BadRequestException(`Role '${dto.roleId}' not found`);
+    const shopName = await this.assertShopRole(
+      role.name,
+      dto.shopId ?? null,
+      null,
+    );
     await this.permissions.assertCallerCanAssign(callerRoleId, dto.roleId);
     await this.assertEmailAvailable(dto.email, null);
 
@@ -157,15 +174,18 @@ export class UsersService {
           passwordHash,
           passwordChangedAt: new Date(),
           roleId: dto.roleId,
+          shopId: dto.shopId ?? null,
           status: dto.status ?? 'ACTIVE',
         })
         .returning({ id: users.id });
       return this.getById(inserted[0].id);
     } catch (err) {
       if (isUniqueViolation(err)) {
-        throw new ConflictException(
-          `User with email '${normalizeEmail(dto.email)}' already exists`,
-        );
+        throw this.uniqueConflict(err, {
+          email: dto.email,
+          shopName,
+          shopId: dto.shopId,
+        });
       }
       throw err;
     }
@@ -186,6 +206,19 @@ export class UsersService {
       await this.permissions.assertCallerCanAssign(callerRoleId, dto.roleId);
     }
 
+    const nextRole = dto.roleId
+      ? await this.database.db.query.roles.findFirst({
+          where: eq(roles.id, dto.roleId),
+          columns: { id: true, name: true },
+        })
+      : existing.role;
+    if (!nextRole) throw new BadRequestException(`Role '${dto.roleId}' not found`);
+    const shopName = await this.assertShopRole(
+      nextRole.name,
+      dto.shopId !== undefined ? dto.shopId : existing.shopId,
+      id,
+    );
+
     if (dto.email && normalizeEmail(dto.email) !== existing.email) {
       await this.assertEmailAvailable(dto.email, id);
     }
@@ -202,6 +235,7 @@ export class UsersService {
           ...(dto.email !== undefined && { email: normalizeEmail(dto.email) }),
           ...(dto.phone !== undefined && { phone: dto.phone }),
           ...(dto.roleId !== undefined && { roleId: dto.roleId }),
+          ...(dto.shopId !== undefined && { shopId: dto.shopId }),
           ...(dto.status !== undefined && { status: dto.status }),
           ...(passwordHash !== undefined && {
             passwordHash,
@@ -213,9 +247,11 @@ export class UsersService {
       return this.getById(id);
     } catch (err) {
       if (isUniqueViolation(err)) {
-        throw new ConflictException(
-          `User with email '${normalizeEmail(dto.email as string)}' already exists`,
-        );
+        throw this.uniqueConflict(err, {
+          email: dto.email ?? existing.email,
+          shopName,
+          shopId: dto.shopId ?? existing.shopId,
+        });
       }
       throw err;
     }
@@ -268,5 +304,67 @@ export class UsersService {
         `User with email '${normalized}' already exists`,
       );
     }
+  }
+
+  private async assertShopRole(
+    roleName: string,
+    shopId: string | null,
+    excludeUserId: string | null,
+  ): Promise<string | null> {
+    if (roleName === 'SHOP' && shopId === null) {
+      throw new BadRequestException('SHOP users must have a shopId');
+    }
+    if (roleName !== 'SHOP' && shopId !== null) {
+      throw new BadRequestException('Only SHOP users may have a shopId');
+    }
+    if (shopId) {
+      const shop = await this.database.db.query.shops.findFirst({
+        where: eq(shops.id, shopId),
+        columns: { id: true, name: true },
+      });
+      if (!shop) throw new BadRequestException(`Shop '${shopId}' not found`);
+      if (roleName === 'SHOP') {
+        const existingLogin = await this.database.db.query.users.findFirst({
+          where: excludeUserId
+            ? and(
+                eq(users.shopId, shopId),
+                sql`${users.id} <> ${excludeUserId}`,
+              )
+            : eq(users.shopId, shopId),
+          columns: { id: true },
+        });
+        if (existingLogin) {
+          throw this.shopLoginConflict(shop.name);
+        }
+      }
+      return shop.name;
+    }
+    return null;
+  }
+
+  private uniqueConflict(
+    err: unknown,
+    context: {
+      email?: string;
+      shopName: string | null;
+      shopId?: string | null;
+    },
+  ): ConflictException {
+    switch (getUniqueViolationConstraint(err)) {
+      case 'users_email_unique':
+        return new ConflictException(
+          `User with email '${normalizeEmail(context.email ?? '')}' already exists`,
+        );
+      case 'users_shop_unique':
+        return this.shopLoginConflict(context.shopName ?? context.shopId ?? 'unknown');
+      default:
+        return new ConflictException('A record with these details already exists');
+    }
+  }
+
+  private shopLoginConflict(shopNameOrId: string): ConflictException {
+    return new ConflictException(
+      `Shop '${shopNameOrId}' already has a login user`,
+    );
   }
 }

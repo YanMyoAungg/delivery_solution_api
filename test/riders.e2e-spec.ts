@@ -106,6 +106,14 @@ describe('Riders (e2e)', () => {
     expect(created.body.email).toBe(email);
     expect(created.body).not.toHaveProperty('passwordHash');
 
+    const assignable = await request(app.getHttpServer())
+      .get('/api/v1/riders/assignable')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(assignable.body).toContainEqual(
+      expect.objectContaining({ id: riderId, name: `Rider ${run}` }),
+    );
+
     const riderLogin = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({ email, password: 'password1' })

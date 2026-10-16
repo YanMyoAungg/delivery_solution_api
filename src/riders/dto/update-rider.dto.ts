@@ -6,6 +6,7 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  Matches,
 } from 'class-validator';
 import { USER_STATUSES, type UserStatus } from '../../users/user.schema.js';
 import {
@@ -43,10 +44,14 @@ export class UpdateRiderDto {
   @MaxLength(72)
   password?: string;
 
-  @ApiPropertyOptional({
-    enum: RIDER_VEHICLE_TYPES,
-    enumName: 'RiderVehicleType',
-  })
+  @ApiPropertyOptional({ example: '600.00', nullable: true })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  @MaxLength(13)
+  commissionPerWayOverride?: string | null;
+
+  @ApiPropertyOptional({ enum: RIDER_VEHICLE_TYPES, default: 'BIKE' })
   @IsOptional()
   @IsEnum(RIDER_VEHICLE_TYPES)
   vehicleType?: RiderVehicleType;
@@ -63,7 +68,7 @@ export class UpdateRiderDto {
   @MaxLength(50)
   licenseNo?: string | null;
 
-  @ApiPropertyOptional({ example: '09987654321', nullable: true })
+  @ApiPropertyOptional({ example: '09/LaMaNa(N)123456', nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(50)
@@ -80,5 +85,4 @@ export class UpdateRiderDto {
   @IsString()
   @MaxLength(500)
   notes?: string | null;
-
 }

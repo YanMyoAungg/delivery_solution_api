@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DatabaseService } from '../common/database/database.service.js';
 import { RidersService } from './riders.service.js';
+import { PermissionService } from '../permissions/permissions.service.js';
 
 function baseRider(overrides: Record<string, unknown> = {}) {
   return {
@@ -11,12 +12,13 @@ function baseRider(overrides: Record<string, unknown> = {}) {
     email: 'john.rider@delivery.local',
     phone: '09123456789',
     status: 'ACTIVE' as const,
+    commissionPerWayOverride: null,
     vehicleType: 'BIKE' as const,
-    vehiclePlate: 'MDY-1234',
-    licenseNo: 'DL-2024-99812',
-    nrcNumber: '09987654321',
-    emergencyContactPhone: '09111111111',
-    notes: 'Prefers north townships',
+    vehiclePlate: null,
+    licenseNo: null,
+    nrcNumber: null,
+    emergencyContactPhone: null,
+    notes: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -27,7 +29,6 @@ function queryChain(result: unknown) {
   const chain = {
     from: vi.fn(),
     innerJoin: vi.fn(),
-    for: vi.fn(),
     where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
@@ -37,7 +38,6 @@ function queryChain(result: unknown) {
   };
   chain.from.mockReturnValue(chain);
   chain.innerJoin.mockReturnValue(chain);
-  chain.for.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
   chain.orderBy.mockReturnValue(chain);
   chain.limit.mockReturnValue(chain);
@@ -55,11 +55,16 @@ describe('RidersService', () => {
     transaction: vi.fn(),
   };
   const database = { db };
+  const permissions = { getEffectivePermissions: vi.fn().mockResolvedValue([]) };
 
   beforeEach(async () => {
     vi.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
-      providers: [RidersService, { provide: DatabaseService, useValue: database }],
+      providers: [
+        RidersService,
+        { provide: DatabaseService, useValue: database },
+        { provide: PermissionService, useValue: permissions },
+      ],
     }).compile();
     service = moduleRef.get(RidersService);
   });
@@ -67,9 +72,7 @@ describe('RidersService', () => {
   it('lists riders with pagination metadata', async () => {
     const dataQuery = queryChain([baseRider()]);
     const countQuery = queryChain([{ count: 1 }]);
-    db.select
-      .mockReturnValueOnce(dataQuery)
-      .mockReturnValueOnce(countQuery);
+    db.select.mockReturnValueOnce(dataQuery).mockReturnValueOnce(countQuery);
 
     const result = await service.list({ page: 1, perPage: 20 });
 
@@ -80,16 +83,6 @@ describe('RidersService', () => {
       total: 1,
       totalPages: 1,
     });
-  });
-
-  it('lists active riders available for order assignment', async () => {
-    db.select.mockReturnValue(
-      queryChain([{ id: baseRider().riderId, name: baseRider().name }]),
-    );
-
-    await expect(service.listAssignableForOrders()).resolves.toEqual([
-      { id: baseRider().riderId, name: baseRider().name },
-    ]);
   });
 
   it('throws NotFoundException for an unknown rider', async () => {
@@ -118,9 +111,7 @@ describe('RidersService', () => {
       async (callback: (transaction: typeof tx) => Promise<string>) =>
         callback(tx),
     );
-    db.select
-      .mockReturnValueOnce(queryChain([baseRider()]))
-      .mockReturnValueOnce(queryChain([]));
+    db.select.mockReturnValue(queryChain([baseRider()]));
 
     const result = await service.create({
       name: ' John Rider ',
@@ -174,6 +165,7 @@ describe('RidersService', () => {
 
   it('updates and deletes the rider account transactionally', async () => {
     const existing = baseRider();
+    db.select.mockReturnValueOnce(queryChain([existing]));
     const tx = {
       update: vi.fn().mockReturnValue({
         set: vi.fn().mockReturnValue({
@@ -188,11 +180,9 @@ describe('RidersService', () => {
       async (callback: (transaction: typeof tx) => Promise<void>) =>
         callback(tx),
     );
-    db.select
-      .mockReturnValueOnce(queryChain([existing]))
-      .mockReturnValueOnce(queryChain([baseRider({ name: 'Updated' })]));
+    db.select.mockReturnValueOnce(queryChain([baseRider({ name: 'Updated' })]));
 
-    const updated = await service.update(existing.riderId, { name: 'Updated' });
+    const updated = await service.update(existing.riderId, { name: 'Updated' }, 'role-1');
     expect(updated.name).toBe('Updated');
 
     db.select.mockReturnValueOnce(queryChain([existing]));

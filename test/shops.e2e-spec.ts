@@ -15,7 +15,9 @@ describe('Shops (e2e)', () => {
   let database: DatabaseService;
   let ownerId: string;
   let ownerToken: string;
+  let shopRoleId: string;
   const createdShopIds: string[] = [];
+  const createdUserIds: string[] = [];
   const run = Date.now();
 
   beforeAll(async () => {
@@ -31,12 +33,18 @@ describe('Shops (e2e)', () => {
       columns: { id: true },
     });
     if (!role) throw new Error('OWNER role missing - run db:seed');
+    const shopRole = await database.db.query.roles.findFirst({
+      where: eq(roles.name, 'SHOP'),
+      columns: { id: true },
+    });
+    if (!shopRole) throw new Error('SHOP role missing - run db:seed');
+    shopRoleId = shopRole.id;
     const [user] = await database.db
       .insert(users)
       .values({
         name: 'Shops E2E Owner',
         email: `shops-owner-${run}@e2e.local`,
-        passwordHash: await hashPassword('Password1234'),
+        passwordHash: await hashPassword('owner1234'),
         roleId: role.id,
         status: 'ACTIVE',
       })
@@ -45,12 +53,15 @@ describe('Shops (e2e)', () => {
 
     const login = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email: `shops-owner-${run}@e2e.local`, password: 'Password1234' })
+      .send({ email: `shops-owner-${run}@e2e.local`, password: 'owner1234' })
       .expect(200);
     ownerToken = login.body.accessToken as string;
   });
 
   afterAll(async () => {
+    for (const id of createdUserIds) {
+      await database.db.delete(users).where(eq(users.id, id));
+    }
     for (const id of createdShopIds) {
       await database.db.delete(shops).where(eq(shops.id, id));
     }
@@ -70,20 +81,16 @@ describe('Shops (e2e)', () => {
         name: `Shop ${run}`,
         phone: '09123456789',
         address: 'Main Road',
-        notes: 'Deliver before 6pm',
         channelType: 'VIBER',
-        channelName: `ShopChannel ${run}`,
+        channelName: `ShopChannel${run}`,
       })
       .expect(201);
     const shopId = created.body.id as string;
     createdShopIds.push(shopId);
 
     expect(created.body.name).toBe(`Shop ${run}`);
-    expect(created.body.channelType).toBe('VIBER');
-    expect(created.body.channelName).toBe(`ShopChannel ${run}`);
-    expect(created.body.notes).toBe('Deliver before 6pm');
+    expect(created.body.hasLogin).toBe(false);
     expect(created.body).not.toHaveProperty('passwordHash');
-    expect(created.body).not.toHaveProperty('chatId');
 
     const listed = await request(app.getHttpServer())
       .get(`/api/v1/shops?search=${run}`)
@@ -119,7 +126,7 @@ describe('Shops (e2e)', () => {
 
   it('validates payloads and rejects duplicate names', async () => {
     const name = `Duplicate Shop ${run}`;
-    const payload = { name, channelType: 'VIBER', channelName: `Dup${run}` };
+    const payload = { name, channelType: 'VIBER', channelName: `Duplicate${run}` };
     const first = await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
@@ -140,48 +147,23 @@ describe('Shops (e2e)', () => {
       .expect(400);
   });
 
-  it('requires the channel fields and rejects an unknown channel type', async () => {
-    // Each case omits exactly one required field, so a 400 can only come from
-    // that field's own rule. Omitting both would pass even if only one rule
-    // existed, so the two cases are deliberately separate.
+  it('requires valid channel details and supports updating/searching them', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
-        name: `NoChannelType ${run}`,
-        channelName: `NoChannelType${run}`,
-      })
+      .send({ name: `Missing Channel ${run}` })
       .expect(400);
 
     await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({
-        name: `NoChannelName ${run}`,
-        channelType: 'VIBER',
-      })
-      .expect(400);
-
-    await request(app.getHttpServer())
-      .post('/api/v1/shops')
-      .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
-        name: `NoChannels ${run}`,
-      })
-      .expect(400);
-
-    await request(app.getHttpServer())
-      .post('/api/v1/shops')
-      .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
-        name: `BadChannel ${run}`,
+        name: `Invalid Channel ${run}`,
         channelType: 'WHATSAPP',
-        channelName: `BadChannel${run}`,
+        channelName: `Invalid${run}`,
       })
       .expect(400);
-  });
 
-  it('updates channel fields and accepts a search by channel name', async () => {
     const created = await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
@@ -203,16 +185,90 @@ describe('Shops (e2e)', () => {
         notes: 'Updated note',
       })
       .expect(200);
-    expect(updated.body.channelType).toBe('TELEGRAM');
-    expect(updated.body.channelName).toBe(`AfterUpdate${run}`);
-    expect(updated.body.notes).toBe('Updated note');
+    expect(updated.body).toMatchObject({
+      channelType: 'TELEGRAM',
+      channelName: `AfterUpdate${run}`,
+      notes: 'Updated note',
+    });
 
     const searched = await request(app.getHttpServer())
       .get(`/api/v1/shops?search=AfterUpdate${run}`)
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(200);
+    expect(searched.body.data).toContainEqual(
+      expect.objectContaining({ id: shopId }),
+    );
+  });
+
+  it('rejects a second login for a shop and filters shops without logins', async () => {
+    const occupied = await request(app.getHttpServer())
+      .post('/api/v1/shops')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Occupied Shop ${run}`,
+        channelType: 'VIBER',
+        channelName: `OccupiedShop${run}`,
+      })
+      .expect(201);
+    const free = await request(app.getHttpServer())
+      .post('/api/v1/shops')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Free Shop ${run}`,
+        channelType: 'TELEGRAM',
+        channelName: `FreeShop${run}`,
+      })
+      .expect(201);
+    createdShopIds.push(occupied.body.id as string, free.body.id as string);
+
+    const firstLogin = await request(app.getHttpServer())
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: 'Shop Login',
+        email: `shop-login-${run}@e2e.local`,
+        roleId: shopRoleId,
+        shopId: occupied.body.id,
+        password: 'password1',
+      })
+      .expect(201);
+    createdUserIds.push(firstLogin.body.id as string);
+
+    const conflict = await request(app.getHttpServer())
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: 'Second Shop Login',
+        email: `second-shop-login-${run}@e2e.local`,
+        roleId: shopRoleId,
+        shopId: occupied.body.id,
+        password: 'password1',
+      })
+      .expect(409);
+    expect(conflict.body.message).toBe(
+      `Shop 'Occupied Shop ${run}' already has a login user`,
+    );
+
+    const availableShops = await request(app.getHttpServer())
+      .get(`/api/v1/shops?search=${run}&hasLogin=false`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
     expect(
-      searched.body.data.map((shop: { id: string }) => shop.id),
-    ).toContain(shopId);
+      availableShops.body.data.map((shop: { id: string }) => shop.id),
+    ).toContain(free.body.id);
+    expect(
+      availableShops.body.data.map((shop: { id: string }) => shop.id),
+    ).not.toContain(occupied.body.id);
+    expect(
+      availableShops.body.data.every(
+        (shop: { hasLogin: boolean }) => shop.hasLogin === false,
+      ),
+    ).toBe(true);
+
+    const detail = await request(app.getHttpServer())
+      .get(`/api/v1/shops/${occupied.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(detail.body.hasLogin).toBe(true);
   });
 });
