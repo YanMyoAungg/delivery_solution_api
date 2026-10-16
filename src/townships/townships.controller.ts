@@ -1,8 +1,7 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/auth/permissions.decorator.js';
 import { CreateTownshipDto } from './dto/create-township.dto.js';
-import { ListTownshipsQueryDto } from './dto/list-townships-query.dto.js';
 import { TownshipResponseDto } from './dto/township-response.dto.js';
 import { UpdateTownshipDto } from './dto/update-township.dto.js';
 import { TownshipsService } from './townships.service.js';
@@ -16,8 +15,8 @@ export class TownshipsController {
   @Get()
   @RequirePermissions('orders.read')
   @ApiOkResponse({ type: [TownshipResponseDto] })
-  list(@Query() query: ListTownshipsQueryDto): Promise<TownshipResponseDto[]> {
-    return this.townships.list(query);
+  list(): Promise<TownshipResponseDto[]> {
+    return this.townships.list();
   }
 
   @Post()

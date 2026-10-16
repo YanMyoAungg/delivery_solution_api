@@ -7,13 +7,16 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
-
-const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
+import { MONEY_AMOUNT_PATTERN } from '../../common/utils/money.util.js';
 
 export class CreateOrderDto {
   @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
   @IsUUID()
   townshipId: string;
+
+  @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
+  @IsUUID('4')
+  riderId: string;
 
   @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
   @IsUUID()
@@ -36,7 +39,7 @@ export class CreateOrderDto {
   @ApiPropertyOptional({ example: '0.00', default: '0' })
   @IsOptional()
   @IsString()
-  @Matches(MONEY_PATTERN, {
+  @Matches(MONEY_AMOUNT_PATTERN, {
     message: 'deliveryFee must be a decimal string with up to 2 decimal places',
   })
   deliveryFee?: string;
@@ -44,7 +47,7 @@ export class CreateOrderDto {
   @ApiPropertyOptional({ example: '0.00', default: '0' })
   @IsOptional()
   @IsString()
-  @Matches(MONEY_PATTERN, {
+  @Matches(MONEY_AMOUNT_PATTERN, {
     message: 'codAmount must be a decimal string with up to 2 decimal places',
   })
   codAmount?: string;

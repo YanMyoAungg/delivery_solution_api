@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/auth/permissions.decorator.js';
+import { AssignableRiderResponseDto } from './dto/assignable-rider-response.dto.js';
 import { CreateRiderDto } from './dto/create-rider.dto.js';
 import { ListRidersQueryDto } from './dto/list-riders-query.dto.js';
 import { RiderListResponseDto } from './dto/rider-list-response.dto.js';
@@ -38,6 +39,14 @@ export class RidersController {
   @ApiOkResponse({ type: RiderListResponseDto })
   list(@Query() query: ListRidersQueryDto): Promise<RiderListResponseDto> {
     return this.ridersService.list(query);
+  }
+
+  @Get('assignable')
+  @RequirePermissions('orders.create')
+  @ApiOperation({ summary: 'List active riders available for order assignment' })
+  @ApiOkResponse({ type: [AssignableRiderResponseDto] })
+  listAssignableForOrders(): Promise<AssignableRiderResponseDto[]> {
+    return this.ridersService.listAssignableForOrders();
   }
 
   @Post()

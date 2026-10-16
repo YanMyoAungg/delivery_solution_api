@@ -2,14 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEmail,
   IsEnum,
-  IsArray,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
-  ArrayUnique,
-  IsUUID,
 } from 'class-validator';
 import { USER_STATUSES, type UserStatus } from '../../users/user.schema.js';
 import {
@@ -84,10 +81,4 @@ export class CreateRiderDto {
   @MaxLength(500)
   notes?: string | null;
 
-  @ApiPropertyOptional({ type: [String], description: 'Townships this rider serves' })
-  @IsOptional()
-  @IsArray()
-  @ArrayUnique()
-  @IsUUID('4', { each: true })
-  townshipIds?: string[];
 }

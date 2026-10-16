@@ -12,12 +12,12 @@ Legend: ✅ done · phase-relative commit (migration + code + tests together).
 - **Phase 2 — Master Data:** COMPLETE
 - **Phase 3 — Orders Core:** SUPERSEDED by the implemented Phase 3.5 lifecycle
 - **Phase 4 — Pickups:** **DELETED OUTRIGHT** — there is no pickup state left in the operational flow, so there is nothing for the module to drive. Deletion includes the module, both tables, the `pickups.*` permission keys, and its e2e coverage. This is not "retired but parked."
-- **Phase 5 — Delivery Operations:** PARTIAL — self-scoped rider actions and active-attempt uniqueness remain; assignment now uses system round-robin and `start` is removed.
+- **Phase 5 — Delivery Operations:** PARTIAL — self-scoped rider actions and active-attempt uniqueness remain; office selects the rider at order creation and `start` is removed.
 - **Phase 6 — Returns + Payment Reconciliation:** PREFLIGHT BLOCKED; implementation not authorized
 - **Phase 3.6 — Daily rider custody:** DEFERRED, not authorized. See §Phase 3.6.
-- **Phase 3.5 — Townships + round-robin:** COMPLETE (backend and frontend). Frontend contract/implementation record: `../d_frontend/BACKEND_PHASE_3_5_HANDOFF.md`.
+- **Phase 3.5 — Townships + rider operations:** base implementation COMPLETE; the original round-robin/coverage behavior is superseded by the current dispatch flow below. Frontend contract follow-up remains pending.
 - **Office dashboard first slice:** COMPLETE (read-only operational API and office frontend; `reports.read`, OWNER/ADMIN/OFFICER allowed, RIDER denied).
-- **Next activity:** Phase 6 remains preflight-blocked; Phase 3.6 daily custody remains deferred pending client decisions. Master-data reconciliation (Part A) is complete and applied as migration `0012`.
+- **Next activity:** synchronize the frontend with the current backend assignment/pricing contract; Phase 6 remains preflight-blocked and Phase 3.6 daily custody remains deferred. Master-data reconciliation (Part A) is complete and applied as migration `0012`.
 
 Known project-state findings:
 
@@ -29,6 +29,19 @@ Known project-state findings:
 - The Phase 6 notes below are historical planning proposals, not approved implementation requirements.
 - `pnpm-workspace.yaml` has the intended native build approvals for `esbuild` and `bcrypt`; only the file-ending normalization is incidental in the current worktree.
 - `RolesService.create()` does not currently use its caller role id for scope enforcement. Existing ADMIN/user-scope authorization behavior is preserved; no role-management change is part of Phase 2.
+
+## Current dispatch and township pricing — backend COMPLETE; frontend follow-up pending
+
+This section is authoritative and supersedes the original round-robin, rider-township coverage, and colleague-board requirements in the historical Phase 3.5 notes below.
+
+- **Order creation:** `POST /api/v1/orders` requires `townshipId` and an explicitly selected `riderId`. The rider must be an ACTIVE user with the RIDER role. Township and rider have no relationship. In one transaction, validate both, insert the `ASSIGNED` order, initial order history, first delivery attempt, and assignment history. Preserve office reassign/retry paths and their attempt-history semantics.
+- **Rider options:** `GET /api/v1/riders/assignable` requires the existing `orders.create` permission and returns only active rider `id` and `name`, allowing OFFICER order-entry access without granting broad `riders.read` access.
+- **Township pricing:** `townships.default_delivery_fee` is a required fixed-scale amount for township creation; patch can update it. The township response/list includes `defaultDeliveryFee`. `GET /townships` returns all townships; `selectable` filtering is removed. `POST /orders` uses `dto.deliveryFee` when supplied and otherwise snapshots the township default onto `orders.delivery_fee`. Existing townships are backfilled to `0.00` by migration `0016_mysterious_karen_page.sql` and can be updated through township management.
+- **Removed rider coverage:** remove `rider_townships`, `township_rotation`, and `townshipIds` from rider create/update/response contracts. Township remains an order attribute only. Migration 0016 drops the two obsolete tables without changing orders, delivery attempts, or assignment history.
+- **Rider board:** `GET /rider/board` returns only orders whose latest delivery attempt is assigned to the authenticated rider. It returns full detail and the attempt id needed for rider actions; there are no colleague rows or redaction path. The existing date remains the order-creation calendar date in `APP_TIMEZONE`. The old `filter=mine|all` request parameter is accepted but ignored, and `isMine` is always `true` (deprecated), for frontend transition compatibility; the response no longer echoes `filter`.
+- **Lifecycle/security preserved:** rider complete/fail remain ownership-checked; RIDER does not receive `orders.read`; statuses and the three-attempt cap are unchanged. Order editing is not part of this change.
+- **Verification:** API lint/build pass; 76 unit tests and 68 e2e tests pass. Migration `0016_mysterious_karen_page.sql` is applied, and a follow-up `pnpm db:generate` reports no schema changes.
+- **Frontend synchronization:** regenerate OpenAPI types and update the rider selector, township fee form/list, and self-assigned-only rider board in `d_frontend` as a follow-up. Do not infer or re-add township coverage in the frontend.
 
 ## Ground rules for every phase
 
@@ -333,7 +346,9 @@ current implementation.
 
 ---
 
-## Phase 3.5 — Townships, round-robin assignment, rider dashboard — COMPLETE (2026-09-29)
+## Phase 3.5 — Original township coverage and round-robin model (SUPERSEDED)
+
+The decisions and implementation details in this historical section describe the original client flow. They are superseded by **Current dispatch and township pricing** above: no rider-township coverage, no rotation, manual rider selection at order creation, and rider board visibility by current assignment.
 
 ### 3.5.1 Townships
 
@@ -484,7 +499,7 @@ The loop as described: a rider takes ~10 packages in a day; if 5 are not deliver
 
 ---
 
-## Part B — Frontend (`d_frontend`) — COMPLETE
+## Part B — Frontend (`d_frontend`) — ORIGINAL FLOW COMPLETE; CURRENT CONTRACT FOLLOW-UP PENDING
 
 Implemented and pushed in `d_frontend` (`4b5d97d`, with follow-up `390a08e`). The handoff at `../d_frontend/BACKEND_PHASE_3_5_HANDOFF.md` is retained as the API/security contract reference for future frontend maintenance.
 
@@ -518,7 +533,7 @@ Implemented and pushed in `d_frontend` (`4b5d97d`, with follow-up `390a08e`). Th
 
 ---
 
-## Part C — End-to-end verification
+## Part C — Historical end-to-end verification of the original round-robin flow
 
 Verified against the running API with seeded OWNER and RIDER accounts. Backend gates: 73 unit tests and 66 e2e tests; frontend gates: lint/build/existing tests pass.
 

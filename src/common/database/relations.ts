@@ -7,7 +7,7 @@ import { orders } from '../../orders/order.schema.js';
 import { shops } from '../../shops/shop.schema.js';
 import { riders } from '../../riders/rider.schema.js';
 import { orderStatusHistory } from '../../orders/order-status-history.schema.js';
-import { riderTownships, townships } from '../../townships/township.schema.js';
+import { townships } from '../../townships/township.schema.js';
 import {
   deliveryAttempts,
   deliveryAttemptHistory,
@@ -61,19 +61,7 @@ export const orderStatusHistoryRelations = relations(
 );
 
 export const townshipsRelations = relations(townships, ({ many }) => ({
-  riders: many(riderTownships),
   orders: many(orders),
-}));
-
-export const riderTownshipsRelations = relations(riderTownships, ({ one }) => ({
-  rider: one(riders, {
-    fields: [riderTownships.riderId],
-    references: [riders.id],
-  }),
-  township: one(townships, {
-    fields: [riderTownships.townshipId],
-    references: [townships.id],
-  }),
 }));
 
 export const deliveryAttemptsRelations = relations(

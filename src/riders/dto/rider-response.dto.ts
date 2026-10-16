@@ -46,9 +46,6 @@ export class RiderResponseDto {
   @ApiPropertyOptional({ example: 'Prefers north townships', nullable: true })
   notes: string | null;
 
-  @ApiProperty({ type: [String], description: 'Township ids this rider serves' })
-  townshipIds: string[];
-
   @ApiProperty({ example: '2026-09-18T10:00:00.000Z' })
   createdAt: string;
 

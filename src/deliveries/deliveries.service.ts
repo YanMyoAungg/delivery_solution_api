@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
 import { currentDateInTimezone, localDateRange } from '../common/utils/local-date.util.js';
 import { customers } from '../customers/customer.schema.js';
@@ -15,7 +15,7 @@ import { orders } from '../orders/order.schema.js';
 import { OrderStateService } from '../orders/order-state.service.js';
 import { roles } from '../roles/roles.schema.js';
 import { riders } from '../riders/rider.schema.js';
-import { riderTownships, townships } from '../townships/township.schema.js';
+import { townships } from '../townships/township.schema.js';
 import { shops } from '../shops/shop.schema.js';
 import { users } from '../users/user.schema.js';
 import { AssignDeliveryDto } from './dto/assign-delivery.dto.js';
@@ -191,104 +191,79 @@ export class DeliveriesService {
     const rider = await this.riderForUserOrThrow(userId);
     const timezone = this.config.get<string>('APP_TIMEZONE') ?? 'Asia/Yangon';
     const date = query.date ?? currentDateInTimezone(timezone);
-    const filter = query.filter ?? 'all';
-    const townshipAssignments = await this.database.db
-      .select({ townshipId: riderTownships.townshipId })
-      .from(riderTownships)
-      .where(eq(riderTownships.riderId, rider.id));
-    const townshipIds = townshipAssignments.map((row) => row.townshipId);
-    if (townshipIds.length === 0) {
-      return {
-        date,
-        filter,
-        data: [],
-        meta: {
-          page: query.page ?? 1,
-          perPage: query.perPage ?? 50,
-          total: 0,
-          totalPages: 0,
-        },
-      };
-    }
-
-    const orderRows = await this.database.db
-      .select({
-        id: orders.id,
-        trackingCode: orders.trackingCode,
-        status: orders.status,
-        townshipId: orders.townshipId,
-        townshipName: townships.name,
-        shopName: shops.name,
-        customerId: customers.id,
-        customerName: customers.name,
-        customerPhone: customers.phone,
-        customerAddress: customers.address,
-        packageInfo: orders.packageInfo,
-        deliveryFee: orders.deliveryFee,
-        codAmount: orders.codAmount,
-        notes: orders.notes,
-        createdAt: orders.createdAt,
-      })
-      .from(orders)
-      .innerJoin(townships, eq(townships.id, orders.townshipId))
-      .innerJoin(shops, eq(shops.id, orders.shopId))
-      .innerJoin(customers, eq(customers.id, orders.customerId))
-      .where(
-        and(
-          inArray(orders.townshipId, townshipIds),
-          localDateRange(orders.createdAt, date, timezone),
-        ),
-      )
-      .orderBy(desc(orders.createdAt));
-
-    const assignments = await this.latestAssignments(orderRows.map((row) => row.id));
-    const filtered = orderRows
-      .map((row) => {
-        const assignment = assignments.get(row.id);
-        return {
-          row,
-          assignedRiderId: assignment?.riderId ?? null,
-          assignment,
-        };
-      })
-      .filter(({ assignedRiderId }) =>
-        filter === 'all' || assignedRiderId === rider.id,
-      );
     const page = query.page ?? 1;
     const perPage = query.perPage ?? 50;
-    const total = filtered.length;
-    const data = filtered
-      .slice((page - 1) * perPage, page * perPage)
-      .map(({ row, assignedRiderId, assignment }) => {
-        const isMine = assignedRiderId === rider.id;
-        return {
-          id: row.id,
-          trackingCode: row.trackingCode,
-          status: row.status,
-          townshipId: row.townshipId,
-          townshipName: row.townshipName,
-          shopName: row.shopName,
-          assignedRiderName: assignment?.riderName ?? null,
-          isMine,
-          createdAt: row.createdAt.toISOString(),
-          ...(isMine && {
-            deliveryAttemptId: assignment?.deliveryAttemptId,
-            attemptNumber: assignment?.attemptNumber,
-            customerId: row.customerId,
-            customerName: row.customerName,
-            customerPhone: row.customerPhone,
-            customerAddress: row.customerAddress,
-            packageInfo: row.packageInfo as Record<string, unknown> | null,
-            deliveryFee: row.deliveryFee,
-            codAmount: row.codAmount,
-            notes: row.notes,
-          }),
-        };
-      });
+    const currentAssignment = and(
+      eq(deliveryAttempts.riderId, rider.id),
+      sql`${deliveryAttempts.attemptNumber} = (
+        select max(latest_attempt.attempt_number)
+        from delivery_attempts latest_attempt
+        where latest_attempt.order_id = ${deliveryAttempts.orderId}
+      )`,
+      localDateRange(orders.createdAt, date, timezone),
+    );
+
+    const [orderRows, countRows] = await Promise.all([
+      this.database.db
+        .select({
+          id: orders.id,
+          trackingCode: orders.trackingCode,
+          status: orders.status,
+          townshipId: orders.townshipId,
+          townshipName: townships.name,
+          shopName: shops.name,
+          customerId: customers.id,
+          customerName: customers.name,
+          customerPhone: customers.phone,
+          customerAddress: customers.address,
+          packageInfo: orders.packageInfo,
+          deliveryFee: orders.deliveryFee,
+          codAmount: orders.codAmount,
+          notes: orders.notes,
+          createdAt: orders.createdAt,
+          deliveryAttemptId: deliveryAttempts.id,
+          attemptNumber: deliveryAttempts.attemptNumber,
+        })
+        .from(deliveryAttempts)
+        .innerJoin(orders, eq(orders.id, deliveryAttempts.orderId))
+        .innerJoin(townships, eq(townships.id, orders.townshipId))
+        .innerJoin(shops, eq(shops.id, orders.shopId))
+        .innerJoin(customers, eq(customers.id, orders.customerId))
+        .where(currentAssignment)
+        .orderBy(desc(orders.createdAt), desc(deliveryAttempts.attemptNumber))
+        .limit(perPage)
+        .offset((page - 1) * perPage),
+      this.database.db
+        .select({ count: sql<number>`count(*)` })
+        .from(deliveryAttempts)
+        .innerJoin(orders, eq(orders.id, deliveryAttempts.orderId))
+        .where(currentAssignment),
+    ]);
+
+    const total = Number(countRows[0]?.count ?? 0);
+    const data = orderRows.map((row) => ({
+      id: row.id,
+      trackingCode: row.trackingCode,
+      status: row.status,
+      townshipId: row.townshipId,
+      townshipName: row.townshipName,
+      shopName: row.shopName,
+      deliveryAttemptId: row.deliveryAttemptId,
+      attemptNumber: row.attemptNumber,
+      isMine: true,
+      createdAt: row.createdAt.toISOString(),
+      customerId: row.customerId,
+      customerName: row.customerName,
+      customerPhone: row.customerPhone,
+      customerAddress: row.customerAddress,
+      packageInfo: row.packageInfo as Record<string, unknown> | null,
+      deliveryFee: row.deliveryFee,
+      codAmount: row.codAmount,
+      notes: row.notes,
+    }));
 
     return {
       date,
-      filter,
       data,
       meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
     };
@@ -565,55 +540,6 @@ export class DeliveriesService {
         eq(deliveryAttempts.status, 'ASSIGNED'),
       ),
     });
-  }
-
-  private async latestAssignments(
-    orderIds: string[],
-  ): Promise<
-    Map<
-      string,
-      {
-        deliveryAttemptId: string;
-        attemptNumber: number;
-        riderId: string;
-        riderName: string;
-      }
-    >
-  > {
-    if (orderIds.length === 0) return new Map();
-    const rows = await this.database.db
-      .select({
-        orderId: deliveryAttempts.orderId,
-        deliveryAttemptId: deliveryAttempts.id,
-        attemptNumber: deliveryAttempts.attemptNumber,
-        riderId: riders.id,
-        riderName: users.name,
-      })
-      .from(deliveryAttempts)
-      .innerJoin(riders, eq(riders.id, deliveryAttempts.riderId))
-      .innerJoin(users, eq(users.id, riders.userId))
-      .where(inArray(deliveryAttempts.orderId, orderIds))
-      .orderBy(desc(deliveryAttempts.attemptNumber));
-    const assignments = new Map<
-      string,
-      {
-        deliveryAttemptId: string;
-        attemptNumber: number;
-        riderId: string;
-        riderName: string;
-      }
-    >();
-    for (const row of rows) {
-      if (!assignments.has(row.orderId)) {
-        assignments.set(row.orderId, {
-          deliveryAttemptId: row.deliveryAttemptId,
-          attemptNumber: row.attemptNumber,
-          riderId: row.riderId,
-          riderName: row.riderName,
-        });
-      }
-    }
-    return assignments;
   }
 
   private async attemptOrThrow(id: string): Promise<DeliveryRow> {

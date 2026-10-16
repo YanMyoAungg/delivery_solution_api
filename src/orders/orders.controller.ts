@@ -41,7 +41,7 @@ export class OrdersController {
 
   @Post()
   @RequirePermissions('orders.create')
-  @ApiOperation({ summary: 'Register an office-received order and assign a rider by township rotation' })
+  @ApiOperation({ summary: 'Register an office-received order and assign the selected active rider' })
   @ApiCreatedResponse({ type: OrderResponseDto })
   create(
     @Body() dto: CreateOrderDto,

@@ -100,6 +100,7 @@ describe('Riders (e2e)', () => {
     expect(created.body.nrcNumber).toBe(`NRC-${run}`);
     expect(created.body.emergencyContactPhone).toBe('09111111111');
     expect(created.body.notes).toBe('Prefers north townships');
+    expect(created.body).not.toHaveProperty('townshipIds');
 
     expect(created.body.role).toBeUndefined();
     expect(created.body.email).toBe(email);
@@ -130,6 +131,12 @@ describe('Riders (e2e)', () => {
       .send({ name: `Updated Rider ${run}` })
       .expect(200);
     expect(updated.body.name).toBe(`Updated Rider ${run}`);
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/riders/${riderId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ townshipIds: [] })
+      .expect(400);
 
     await request(app.getHttpServer())
       .delete(`/api/v1/riders/${riderId}`)

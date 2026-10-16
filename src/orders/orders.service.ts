@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
 import { isUniqueViolation } from '../common/database/is-unique-violation.js';
 import { escapeLikeWildcards } from '../common/utils/normalize.util.js';
@@ -14,7 +14,7 @@ import { roles } from '../roles/roles.schema.js';
 import { riders } from '../riders/rider.schema.js';
 import { shops } from '../shops/shop.schema.js';
 import { users } from '../users/user.schema.js';
-import { riderTownships, townships, townshipRotation } from '../townships/township.schema.js';
+import { townships } from '../townships/township.schema.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto.js';
 import { OrderDetailResponseDto } from './dto/order-detail-response.dto.js';
@@ -29,11 +29,6 @@ const MAX_TRACKING_CODE_ATTEMPTS = 3;
 
 type OrderRow = typeof orders.$inferSelect;
 type OrderHistoryRow = typeof orderStatusHistory.$inferSelect;
-type OrderTransaction = Pick<
-  typeof DatabaseService.prototype.db,
-  'select' | 'insert' | 'update'
->;
-
 interface RiderAssignment {
   riderId: string | null;
   riderName: string | null;
@@ -167,7 +162,43 @@ export class OrdersService {
     for (let attempt = 1; attempt <= MAX_TRACKING_CODE_ATTEMPTS; attempt++) {
       try {
         const created = await this.database.db.transaction(async (tx) => {
-          const { rider, townshipName } = await this.nextRider(tx, dto.townshipId);
+          const [township] = await tx
+            .select({
+              id: townships.id,
+              name: townships.name,
+              defaultDeliveryFee: townships.defaultDeliveryFee,
+            })
+            .from(townships)
+            .where(eq(townships.id, dto.townshipId));
+          if (!township) {
+            throw new BadRequestException(
+              `Township '${dto.townshipId}' not found`,
+            );
+          }
+
+          const [rider] = await tx
+            .select({
+              id: riders.id,
+              name: users.name,
+              phone: users.phone,
+            })
+            .from(riders)
+            .innerJoin(users, eq(users.id, riders.userId))
+            .innerJoin(roles, eq(roles.id, users.roleId))
+            .where(
+              and(
+                eq(riders.id, dto.riderId),
+                eq(users.status, 'ACTIVE'),
+                eq(roles.name, 'RIDER'),
+              ),
+            )
+            .for('update');
+          if (!rider) {
+            throw new BadRequestException(
+              `Active rider '${dto.riderId}' not found`,
+            );
+          }
+
           const [inserted] = await tx
             .insert(orders)
             .values({
@@ -176,7 +207,7 @@ export class OrdersService {
               customerId: dto.customerId,
               townshipId: dto.townshipId,
               packageInfo: dto.packageInfo ?? null,
-              deliveryFee: dto.deliveryFee ?? '0',
+              deliveryFee: dto.deliveryFee ?? township.defaultDeliveryFee,
               codAmount: dto.codAmount ?? '0',
               status: 'ASSIGNED',
               notes: dto.notes ?? null,
@@ -188,7 +219,7 @@ export class OrdersService {
             fromStatus: null,
             toStatus: 'ASSIGNED',
             changedBy,
-            note: 'Order registered and assigned by township round-robin',
+            note: 'Order registered and assigned to the selected rider',
           });
 
           const [deliveryAttempt] = await tx
@@ -206,14 +237,10 @@ export class OrdersService {
             actorId: changedBy,
             previousRiderId: null,
             newRiderId: rider.id,
-            note: 'Order assigned by township round-robin',
+            note: 'Order assigned to the selected rider',
           });
-          await tx
-            .update(townshipRotation)
-            .set({ lastAssignedRiderId: rider.id, updatedAt: new Date() })
-            .where(eq(townshipRotation.townshipId, dto.townshipId));
 
-          return { order: inserted, rider, townshipName };
+          return { order: inserted, rider, townshipName: township.name };
         });
         return toOrderResponse(created.order, {
           riderId: created.rider.id,
@@ -253,64 +280,6 @@ export class OrdersService {
       .where(eq(orderStatusHistory.orderId, orderId))
       .orderBy(orderStatusHistory.createdAt);
     return rows.map(toOrderHistoryResponse);
-  }
-
-  private async nextRider(
-    tx: OrderTransaction,
-    townshipId: string,
-  ): Promise<{
-    rider: { id: string; name: string; phone: string | null };
-    townshipName: string;
-  }> {
-    const [township] = await tx
-      .select({ id: townships.id, name: townships.name })
-      .from(townships)
-      .where(eq(townships.id, townshipId));
-    if (!township) {
-      throw new BadRequestException(`Township '${townshipId}' not found`);
-    }
-
-    await tx
-      .insert(townshipRotation)
-      .values({ townshipId })
-      .onConflictDoNothing();
-    const [rotation] = await tx
-      .select({ lastAssignedRiderId: townshipRotation.lastAssignedRiderId })
-      .from(townshipRotation)
-      .where(eq(townshipRotation.townshipId, townshipId))
-      .for('update');
-    if (!rotation) throw new ConflictException('Township rotation could not be locked');
-
-    const eligible = await tx
-      .select({
-        id: riders.id,
-        name: users.name,
-        phone: users.phone,
-      })
-      .from(riderTownships)
-      .innerJoin(riders, eq(riders.id, riderTownships.riderId))
-      .innerJoin(users, eq(users.id, riders.userId))
-      .innerJoin(roles, eq(roles.id, users.roleId))
-      .where(
-        and(
-          eq(riderTownships.townshipId, townshipId),
-          eq(users.status, 'ACTIVE'),
-          eq(roles.name, 'RIDER'),
-        ),
-      )
-      .orderBy(asc(riders.createdAt), asc(riders.id));
-
-    if (eligible.length === 0) {
-      throw new BadRequestException(
-        `Township '${township.name}' has no active rider; assign a rider before creating orders`,
-      );
-    }
-
-    const previousIndex = eligible.findIndex(
-      (rider) => rider.id === rotation.lastAssignedRiderId,
-    );
-    const nextIndex = (previousIndex + 1) % eligible.length;
-    return { rider: eligible[nextIndex], townshipName: township.name };
   }
 
   private async responsesForOrders(rows: OrderRow[]): Promise<OrderResponseDto[]> {

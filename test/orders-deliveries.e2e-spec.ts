@@ -15,7 +15,7 @@ import { orderStatusHistory } from '../src/orders/order-status-history.schema.js
 import { hashPassword } from '../src/common/utils/password.util.js';
 import { deliveryAttemptHistory, deliveryAttempts } from '../src/deliveries/delivery.schema.js';
 import { riders } from '../src/riders/rider.schema.js';
-import { riderTownships, townships, townshipRotation } from '../src/townships/township.schema.js';
+import { townships } from '../src/townships/township.schema.js';
 
 interface AuthResponse {
   accessToken: string;
@@ -31,6 +31,7 @@ interface CreatedOrder {
   customerName: string;
   customerPhone: string | null;
   customerAddress: string | null;
+  deliveryFee: string;
 }
 
 describe('Township orders and deliveries (e2e)', () => {
@@ -42,6 +43,7 @@ describe('Township orders and deliveries (e2e)', () => {
   let townshipId: string;
   let riderIds: string[] = [];
   let riderTokens: string[] = [];
+  let outsiderRiderId: string;
   let outsiderToken: string;
   let officerToken: string;
   const orderIds: string[] = [];
@@ -56,11 +58,21 @@ describe('Township orders and deliveries (e2e)', () => {
     return (response.body as AuthResponse).accessToken;
   }
 
-  async function createOrder(): Promise<CreatedOrder> {
+  async function createOrder(
+    riderId: string = riderIds[0],
+    deliveryFee?: string,
+  ): Promise<CreatedOrder> {
     const response = await request(app.getHttpServer())
       .post('/api/v1/orders')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ shopId, customerId, townshipId, codAmount: '45000.00' })
+      .send({
+        shopId,
+        customerId,
+        townshipId,
+        riderId,
+        codAmount: '45000.00',
+        ...(deliveryFee !== undefined && { deliveryFee }),
+      })
       .expect(201);
     const created = response.body as CreatedOrder;
     orderIds.push(created.id);
@@ -131,9 +143,10 @@ describe('Township orders and deliveries (e2e)', () => {
     const township = await request(app.getHttpServer())
       .post('/api/v1/townships')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: `Township ${run}` })
+      .send({ name: `Township ${run}`, defaultDeliveryFee: '4200.00' })
       .expect(201);
     townshipId = (township.body as { id: string }).id;
+    expect(township.body.defaultDeliveryFee).toBe('4200.00');
 
     const riderRecords: Array<{ id: string; email: string; name: string }> = [];
     for (const suffix of ['one', 'two']) {
@@ -161,13 +174,6 @@ describe('Township orders and deliveries (e2e)', () => {
     riderTokens = await Promise.all(
       riderRecords.map((rider) => login(rider.email, 'rider1234')),
     );
-    for (const rider of riderRecords) {
-      await request(app.getHttpServer())
-        .patch(`/api/v1/riders/${rider.id}`)
-        .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ townshipIds: [townshipId] })
-        .expect(200);
-    }
     const outsiderEmail = `township-outsider-${run}@e2e.local`;
     const [outsiderUser] = await database.db
       .insert(users)
@@ -180,7 +186,11 @@ describe('Township orders and deliveries (e2e)', () => {
       })
       .returning({ id: users.id });
     userIds.push(outsiderUser.id);
-    await database.db.insert(riders).values({ userId: outsiderUser.id });
+    const [outsiderRider] = await database.db
+      .insert(riders)
+      .values({ userId: outsiderUser.id })
+      .returning({ id: riders.id });
+    outsiderRiderId = outsiderRider.id;
     outsiderToken = await login(outsiderEmail, 'rider1234');
 
     const shop = await request(app.getHttpServer())
@@ -226,12 +236,6 @@ describe('Township orders and deliveries (e2e)', () => {
       await database.db.delete(orders).where(inArray(orders.id, orderIds));
     }
     if (townshipId) {
-      await database.db
-        .delete(townshipRotation)
-        .where(eq(townshipRotation.townshipId, townshipId));
-      await database.db
-        .delete(riderTownships)
-        .where(eq(riderTownships.townshipId, townshipId));
       await database.db.delete(townships).where(eq(townships.id, townshipId));
     }
     if (shopId) await database.db.delete(shops).where(eq(shops.id, shopId));
@@ -244,16 +248,45 @@ describe('Township orders and deliveries (e2e)', () => {
     await app.close();
   });
 
-  it('automatically assigns orders round-robin and advances safely under concurrency', async () => {
-    const first = await createOrder();
-    const second = await createOrder();
-    const third = await createOrder();
-    const fourth = await createOrder();
+  it('assigns each order to the office-selected rider and snapshots the township default fee', async () => {
+    const existingOrder = await createOrder(riderIds[0]);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/townships/${townshipId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ defaultDeliveryFee: '4700.00' })
+      .expect(200);
+
+    const townshipList = await request(app.getHttpServer())
+      .get('/api/v1/townships')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(townshipList.body).toContainEqual(
+      expect.objectContaining({ id: townshipId, defaultDeliveryFee: '4700.00' }),
+    );
+
+    const assignableRiders = await request(app.getHttpServer())
+      .get('/api/v1/riders/assignable')
+      .set('Authorization', `Bearer ${officerToken}`)
+      .expect(200);
+    expect(assignableRiders.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: riderIds[0] }),
+        expect.objectContaining({ id: riderIds[1] }),
+        expect.objectContaining({ id: outsiderRiderId }),
+      ]),
+    );
+
+    const first = await createOrder(riderIds[1]);
+    const second = await createOrder(riderIds[1]);
+    const overridden = await createOrder(outsiderRiderId, '6900.00');
 
     expect(first.status).toBe('ASSIGNED');
-    expect(first.riderId).not.toBe(second.riderId);
-    expect(first.riderId).toBe(third.riderId);
-    expect(second.riderId).toBe(fourth.riderId);
+    expect(first.riderId).toBe(riderIds[1]);
+    expect(second.riderId).toBe(riderIds[1]);
+    expect(overridden.riderId).toBe(outsiderRiderId);
+    expect(first.deliveryFee).toBe('4700.00');
+    expect(existingOrder.deliveryFee).toBe('4200.00');
+    expect(overridden.deliveryFee).toBe('6900.00');
     expect(first.riderName).toContain('Township Rider');
     expect(first).toMatchObject({
       shopName: `Township Shop ${run}`,
@@ -262,8 +295,14 @@ describe('Township orders and deliveries (e2e)', () => {
       customerAddress: 'No. 12 Main Road',
     });
 
-    const parallelOrders = await Promise.all([createOrder(), createOrder()]);
-    expect(parallelOrders[0].riderId).not.toBe(parallelOrders[1].riderId);
+    const parallelOrders = await Promise.all([
+      createOrder(riderIds[1]),
+      createOrder(riderIds[1]),
+    ]);
+    expect(parallelOrders.map((order) => order.riderId)).toEqual([
+      riderIds[1],
+      riderIds[1],
+    ]);
 
     const listed = await request(app.getHttpServer())
       .get(`/api/v1/orders?search=${first.trackingCode}`)
@@ -272,8 +311,9 @@ describe('Township orders and deliveries (e2e)', () => {
     expect(listed.body.data[0]).toMatchObject({
       townshipId,
       townshipName: `Township ${run}`,
-      riderId: first.riderId,
+      riderId: riderIds[1],
       riderName: first.riderName,
+      deliveryFee: '4700.00',
       shopName: `Township Shop ${run}`,
       customerName: `Township Customer ${run}`,
       customerPhone: '09123456789',
@@ -291,72 +331,132 @@ describe('Township orders and deliveries (e2e)', () => {
     ).toBe(true);
   });
 
-  it('rejects order creation without a township or an active covered rider', async () => {
+  it('requires an existing township and an active rider when creating an order', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/orders')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ shopId, customerId })
+      .send({ shopId, customerId, townshipId })
       .expect(400);
 
-    const township = await request(app.getHttpServer())
-      .post('/api/v1/townships')
-      .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: `No Rider ${run}` })
-      .expect(201);
-    const noRiderTownshipId = (township.body as { id: string }).id;
-    expect((township.body as { selectable: boolean }).selectable).toBe(false);
-
-    const selectable = await request(app.getHttpServer())
-      .get('/api/v1/townships?selectable=true')
-      .set('Authorization', `Bearer ${ownerToken}`)
-      .expect(200);
-    expect(
-      (selectable.body as Array<{ id: string }>).map((row) => row.id),
-    ).not.toContain(noRiderTownshipId);
-
-    const response = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post('/api/v1/orders')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ shopId, customerId, townshipId: noRiderTownshipId })
+      .send({
+        shopId,
+        customerId,
+        townshipId: '00000000-0000-4000-8000-000000000001',
+        riderId: riderIds[0],
+      })
       .expect(400);
-    expect(response.body.message).toContain('has no active rider');
-    await database.db.delete(townships).where(eq(townships.id, noRiderTownshipId));
+
+    await request(app.getHttpServer())
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        shopId,
+        customerId,
+        townshipId,
+        riderId: '00000000-0000-4000-8000-000000000001',
+      })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ shopId, customerId, riderId: riderIds[0] })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/riders/${outsiderRiderId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ status: 'INACTIVE' })
+      .expect(200);
+    const activeRiders = await request(app.getHttpServer())
+      .get('/api/v1/riders/assignable')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(activeRiders.body).not.toContainEqual(
+      expect.objectContaining({ id: outsiderRiderId }),
+    );
+    await request(app.getHttpServer())
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ shopId, customerId, townshipId, riderId: outsiderRiderId })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/riders/${outsiderRiderId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ status: 'ACTIVE' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/riders/assignable')
+      .set('Authorization', `Bearer ${riderTokens[0]}`)
+      .expect(403);
   });
 
-  it('scopes the rider board and redacts other riders’ customer and COD data', async () => {
-    const first = await createOrder();
-    const second = await createOrder();
+  it('requires a valid default delivery fee when creating a township', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/townships')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Missing Fee ${run}` })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/townships')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Invalid Fee ${run}`, defaultDeliveryFee: '12.345' })
+      .expect(400);
+  });
+
+  it('returns only the authenticated rider’s current assignments with full own-order detail', async () => {
+    const first = await createOrder(riderIds[0]);
+    const second = await createOrder(riderIds[1]);
     const attemptId = await riderAttemptId(first.id);
 
     const today = currentDateInTimezone('Asia/Yangon');
-    const all = await request(app.getHttpServer())
+    const ownBoard = await request(app.getHttpServer())
       .get(`/api/v1/rider/board?date=${today}&filter=all`)
       .set('Authorization', `Bearer ${riderTokens[0]}`)
       .expect(200);
-    const rows = (all.body as { data: Array<Record<string, unknown>> }).data;
-    const own = rows.find((row) => row.id === first.id || row.id === second.id);
-    expect(own).toBeDefined();
-    const otherOrder = first.riderId === riderIds[0] ? second : first;
-    const other = rows.find((row) => row.id === otherOrder.id);
-    expect(other).toMatchObject({ isMine: false, shopName: `Township Shop ${run}` });
-    expect(other).not.toHaveProperty('customerName');
-    expect(other).not.toHaveProperty('customerPhone');
-    expect(other).not.toHaveProperty('customerAddress');
-    expect(other).not.toHaveProperty('codAmount');
-    expect(other).not.toHaveProperty('deliveryFee');
-    expect(other).not.toHaveProperty('packageInfo');
-    expect(other).not.toHaveProperty('notes');
-    expect(other).not.toHaveProperty('deliveryAttemptId');
+    const ownRows = (ownBoard.body as { data: Array<Record<string, unknown>> }).data;
+    expect(ownRows).toContainEqual(
+      expect.objectContaining({
+        id: first.id,
+        deliveryAttemptId: attemptId,
+        isMine: true,
+        customerName: `Township Customer ${run}`,
+        customerPhone: '09123456789',
+        deliveryFee: first.deliveryFee,
+      }),
+    );
+    expect(ownRows).not.toContainEqual(expect.objectContaining({ id: second.id }));
+    expect(ownBoard.body).not.toHaveProperty('filter');
 
-    const mine = await request(app.getHttpServer())
-      .get(`/api/v1/rider/board?date=${today}&filter=mine`)
-      .set('Authorization', `Bearer ${riderTokens[0]}`)
+    const otherRiderBoard = await request(app.getHttpServer())
+      .get(`/api/v1/rider/board?date=${today}`)
+      .set('Authorization', `Bearer ${riderTokens[1]}`)
       .expect(200);
-    const mineRows = (mine.body as { data: Array<Record<string, unknown>> }).data;
-    expect(mineRows.length).toBeGreaterThan(0);
-    expect(mineRows.every((row) => row.isMine === true)).toBe(true);
-    expect(mineRows[0]).toHaveProperty('customerPhone', '09123456789');
-    expect(mineRows[0]).toHaveProperty('deliveryAttemptId');
+    expect(otherRiderBoard.body.data).toContainEqual(
+      expect.objectContaining({
+        id: second.id,
+        deliveryAttemptId: expect.any(String),
+      }),
+    );
+    expect(otherRiderBoard.body.data).not.toContainEqual(
+      expect.objectContaining({ id: first.id }),
+    );
+
+    const outsiderBoard = await request(app.getHttpServer())
+      .get('/api/v1/rider/board')
+      .set('Authorization', `Bearer ${outsiderToken}`)
+      .expect(200);
+    expect(outsiderBoard.body.data).not.toContainEqual(
+      expect.objectContaining({ id: first.id }),
+    );
+    expect(outsiderBoard.body.data).not.toContainEqual(
+      expect.objectContaining({ id: second.id }),
+    );
 
     await request(app.getHttpServer())
       .get('/api/v1/orders')
@@ -377,15 +477,17 @@ describe('Township orders and deliveries (e2e)', () => {
       .expect(403);
   });
 
-  it('does not show township orders to a rider with no coverage', async () => {
-    const order = await createOrder();
+  it('shows an order created without township coverage to the rider explicitly assigned to it', async () => {
+    const order = await createOrder(outsiderRiderId);
     const response = await request(app.getHttpServer())
-      .get('/api/v1/rider/board?filter=all')
+      .get('/api/v1/rider/board')
       .set('Authorization', `Bearer ${outsiderToken}`)
       .expect(200);
-    expect(response.body.data).toEqual([]);
-    expect(response.body.data).not.toContainEqual(
-      expect.objectContaining({ id: order.id }),
+    expect(response.body.data).toContainEqual(
+      expect.objectContaining({
+        id: order.id,
+        deliveryAttemptId: expect.any(String),
+      }),
     );
   });
 
@@ -408,6 +510,21 @@ describe('Township orders and deliveries (e2e)', () => {
         (event) => event.event === 'REASSIGNED',
       ),
     ).toBe(true);
+    const today = currentDateInTimezone('Asia/Yangon');
+    const previousRiderBoard = await request(app.getHttpServer())
+      .get(`/api/v1/rider/board?date=${today}`)
+      .set('Authorization', `Bearer ${riderTokens[completedRiderIndex]}`)
+      .expect(200);
+    expect(previousRiderBoard.body.data).not.toContainEqual(
+      expect.objectContaining({ id: completedOrder.id }),
+    );
+    const newRiderBoard = await request(app.getHttpServer())
+      .get(`/api/v1/rider/board?date=${today}`)
+      .set('Authorization', `Bearer ${riderTokens[reassignedRiderIndex]}`)
+      .expect(200);
+    expect(newRiderBoard.body.data).toContainEqual(
+      expect.objectContaining({ id: completedOrder.id }),
+    );
     await request(app.getHttpServer())
       .post(`/api/v1/deliveries/${completedAttemptId}/complete`)
       .set('Authorization', `Bearer ${riderTokens[completedRiderIndex]}`)

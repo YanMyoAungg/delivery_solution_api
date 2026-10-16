@@ -2,20 +2,29 @@
 
 NestJS 12 (Express) + TypeScript API for a single delivery company's operations. Postgres 18/Drizzle, Redis, Swagger, Vitest. Single package, no monorepo. Only commit/push when the user explicitly asks.
 
-## Skills — invoke before task-specific code
+## Skills & tools — invoke before task-specific code
 
-Check the table at the start of every task; if a row matches, invoke the skill before writing code. Multiple can apply.
+Check the `skill` tool's available-skills list at the start of every task; if a row matches, invoke the skill before writing code. Multiple can apply. If a skill named here is unavailable in the session, say so in one line and continue.
 
 | Task touches | Invoke |
 |---|---|
-| Any frontend/UI work (dashboards, forms, CRUD screens, components, layouts) | `ui-ux-pro-max` |
-| Landing/marketing pages, visual polish, aesthetic direction | `taste` (on top of `ui-ux-pro-max`) |
-| Charts, graphs, KPI tiles, data visualization | `data-visualization` (before first visualization line) |
-| Logos, decks, icon sets, brand/social assets | `ui-ux-pro-max:design` |
-| Library/framework/SDK/CLI docs question | `ctx7` CLI (see `~/.claude/rules/context7.md`) |
-| Code review / quality pass on changes | `code-review` |
+| Multi-step feature work needing a plan | `writing-plans` → `executing-plans` |
+| Debugging a failing behavior | `systematic-debugging` |
+| Writing/refactoring logic or fixing a bug | `test-driven-development`, then `verification-before-completion` |
+| Dispatching parallel work / subagents | `dispatching-parallel-agents` |
+| Library/framework/SDK/CLI docs question | `find-docs` |
+| Code review / quality pass on changes | `/code-review` command, or direct review |
 
-Utility-only work (pure API/backend/config) needs no frontend skill. When unsure, invoke anyway.
+This repo is backend-only, so the frontend design skills (`ui-ux-pro-max`, `design-taste-frontend`, `frontend-design`) and `data-visualization` normally do **not** apply. Utility-only work (pure API/backend/config) needs no design skill.
+
+## MCP servers for this repo
+
+- `github` — PR/issue/check operations. The only MCP server enabled for this backend repo.
+- The global `playwright`, `shadcn`, and `n8n` servers are explicitly disabled in `opencode.json` (`"enabled": false`), so this repo pays no context cost for them. The old `filesystem` server (a non-existent Windows path) was removed.
+
+## Quality gate
+
+No `/verify` command is configured for this repo; run the gate directly: `pnpm lint && pnpm build && pnpm test` (add `pnpm test:e2e` with the docker Postgres running when relevant).
 
 ## Type safety / code quality (mandatory)
 
@@ -53,7 +62,7 @@ e2e requires `docker compose up -d` running (Postgres on host port 5433); it ins
 
 - `src/app.module.ts` registers global `APP_GUARD`s (JwtAuthGuard + PermissionsGuard): every route requires a `Bearer` JWT unless marked `@Public()`.
 - Protected routes declare `@RequirePermissions('x.y')`; keys must exist in `src/common/auth/permission-keys.ts` and effective role grants come from the database/default grants in `scripts/seed.ts` (unknown keys fail closed).
-- Riders must **not** receive `orders.read`. Rider board/dashboard endpoints use `deliveries.read`, derive the rider from the JWT, and apply the documented option-B redaction. Office order/delivery history uses `orders.read`; office reassign uses `orders.update`.
+- Riders must **not** receive `orders.read`. Rider board/dashboard endpoints use `deliveries.read`, derive the rider from the JWT, and return only orders whose latest delivery attempt is assigned to that rider. No colleague-township rows or redaction path remains. Office order/delivery history uses `orders.read`; office reassign uses `orders.update`.
 - Users not in any permission list are "authenticated only" — don't rely on that; annotate explicitly.
 - Never return `passwordHash` in any response. Auth is access-token only.
 
@@ -86,9 +95,9 @@ e2e requires `docker compose up -d` running (Postgres on host port 5433); it ins
 - `src/common/` — cross-cutting: `auth/` (global guards, decorators, seeded permission keys), `database/` (global Drizzle service), `health/` (public probe), `utils/password.util.ts`.
 - `src/auth/`, `src/users/` — Phase 1 modules (login/me/change-password; admin user CRUD).
 - Phase 2 master data (`shops`, `customers`, `riders`) and Phase 3.5 (`townships`, orders, deliveries) are implemented under `src/<domain>/`. There is **no pickups module**: packages are collected outside the system, brought to the office, then entered by office staff.
-- `township_rotation` is a separate, per-township cursor table. Order creation locks its township row, auto-assigns the next ACTIVE rider covering that township, and atomically creates the `ASSIGNED` order plus its first delivery attempt/history. New assignment logic must preserve that transaction and lock.
+- Order creation requires a township and explicitly selected ACTIVE rider, with no rider-township relationship. It atomically creates the `ASSIGNED` order plus its first delivery attempt/history. `GET /riders/assignable` uses `orders.create` and returns only active rider ids/names for dispatch. Township `defaultDeliveryFee` is the order-fee default; explicit order fee overrides are stored on the order.
 - Current `OrderStatus` and `DeliveryStatus` are exactly `ASSIGNED | DELIVERED | FAILED`. `FAILED → ASSIGNED` retry remains, capped at three attempts. There is no `PENDING`, `PICKED_UP`, `RECEIVED_AT_OFFICE`, `OUT_FOR_DELIVERY`, `RETURNED`, delivery `start` route, `STARTED` history event, or `startedAt` column. Do not restore any as a convenience state.
-- RIDER roles retain `deliveries.read` and `deliveries.update`, but not `orders.read` or office override permissions. `GET /rider/board` and `/rider/dashboard` are self-scoped by JWT; board option B returns full detail/attempt id only for the rider's own orders and redacted routing context for colleagues' orders. Office assignment/reassignment and history remain office operations.
+- RIDER roles retain `deliveries.read` and `deliveries.update`, but not `orders.read` or office override permissions. `GET /rider/board` and `/rider/dashboard` are self-scoped by JWT; the board returns full detail and attempt ids only for orders whose latest attempt is assigned to the authenticated rider. Office assignment/reassignment and history remain office operations.
 - `APP_TIMEZONE` defaults to `Asia/Yangon` and drives date-boundary calculations for rider board/dashboard. The daily custody/sign-out/return loop and 5-of-10 rule are **Phase 3.6 deferrals**, not represented in the current schema or statuses.
 - Office dashboard is implemented as a read-only aggregate API gated by `reports.read` (OWNER/ADMIN/OFFICER allowed; RIDER denied). Follow `PLAN.md` (“Office dashboard — first slice COMPLETE”) for metric/date semantics. Do not expose office-wide data to RIDER or label status-derived COD sums as collected/reconciled funds; no on-time or custody metrics are supported by current data.
 - When e2e tests modify role grants and restore shared-DB state, their restored OFFICER grant set must include `reports.read`; keep test cleanup aligned with the approved default role grants in `scripts/seed.ts`.

@@ -1,18 +1,13 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { and, asc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { and, asc, eq, ilike, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../common/database/database.service.js';
 import { isUniqueViolation } from '../common/database/is-unique-violation.js';
 import { escapeLikeWildcards, normalizeEmail } from '../common/utils/normalize.util.js';
 import { hashPassword } from '../common/utils/password.util.js';
 import { roles } from '../roles/roles.schema.js';
 import { users } from '../users/user.schema.js';
-import { riderTownships, townships, townshipRotation } from '../townships/township.schema.js';
 import { CreateRiderDto } from './dto/create-rider.dto.js';
+import { AssignableRiderResponseDto } from './dto/assignable-rider-response.dto.js';
 import { ListRidersQueryDto } from './dto/list-riders-query.dto.js';
 import { RiderListResponseDto } from './dto/rider-list-response.dto.js';
 import { RiderResponseDto } from './dto/rider-response.dto.js';
@@ -36,15 +31,7 @@ type RiderJoinedRow = {
   updatedAt: Date;
 };
 
-type RiderTransaction = Pick<
-  typeof DatabaseService.prototype.db,
-  'select' | 'insert' | 'delete' | 'update'
->;
-
-function toRiderResponse(
-  row: RiderJoinedRow,
-  townshipIds: string[],
-): RiderResponseDto {
+function toRiderResponse(row: RiderJoinedRow): RiderResponseDto {
   return {
     id: row.riderId,
     userId: row.userId,
@@ -58,7 +45,6 @@ function toRiderResponse(
     nrcNumber: row.nrcNumber,
     emergencyContactPhone: row.emergencyContactPhone,
     notes: row.notes,
-    townshipIds,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -120,20 +106,25 @@ export class RidersService {
     ]);
 
     const total = Number(countResult[0]?.count ?? 0);
-    const townshipIds = await this.townshipIdsForRiders(
-      rows.map((row) => row.riderId),
-    );
     return {
-      data: rows.map((row) =>
-        toRiderResponse(row, townshipIds.get(row.riderId) ?? []),
-      ),
+      data: rows.map(toRiderResponse),
       meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
     };
   }
 
+  async listAssignableForOrders(): Promise<AssignableRiderResponseDto[]> {
+    return this.database.db
+      .select({ id: riders.id, name: users.name })
+      .from(riders)
+      .innerJoin(users, eq(riders.userId, users.id))
+      .innerJoin(roles, eq(users.roleId, roles.id))
+      .where(and(eq(roles.name, 'RIDER'), eq(users.status, 'ACTIVE')))
+      .orderBy(asc(users.name), asc(riders.id));
+  }
+
   async getById(id: string): Promise<RiderResponseDto> {
     const row = await this.riderOrThrow(id);
-    return toRiderResponse(row, await this.townshipIdsForRider(id));
+    return toRiderResponse(row);
   }
 
   async create(dto: CreateRiderDto): Promise<RiderResponseDto> {
@@ -169,17 +160,6 @@ export class RidersService {
             notes: dto.notes ?? null,
           })
           .returning({ id: riders.id });
-        const townshipIds = this.uniqueTownshipIds(dto.townshipIds ?? []);
-        await this.validateTownships(tx, townshipIds);
-        await this.lockTownshipRotations(tx, townshipIds);
-        if (townshipIds.length > 0) {
-          await tx.insert(riderTownships).values(
-            townshipIds.map((townshipId) => ({
-              riderId: rider.id,
-              townshipId,
-            })),
-          );
-        }
         return rider.id;
       });
       return this.getById(riderId);
@@ -212,32 +192,6 @@ export class RidersService {
 
     try {
       await this.database.db.transaction(async (tx) => {
-        let nextTownshipIds: string[] = [];
-        if (dto.townshipIds !== undefined || dto.status === 'INACTIVE') {
-          const [lockedRider] = await tx
-            .select({ id: riders.id })
-            .from(riders)
-            .where(eq(riders.id, id))
-            .for('update');
-          if (!lockedRider) throw new NotFoundException(`Rider '${id}' not found`);
-          const currentAssignments = await tx
-            .select({ townshipId: riderTownships.townshipId })
-            .from(riderTownships)
-            .where(eq(riderTownships.riderId, id));
-          const currentTownshipIds = currentAssignments.map(
-            (assignment) => assignment.townshipId,
-          );
-          nextTownshipIds = this.uniqueTownshipIds(
-            dto.townshipIds ?? currentTownshipIds,
-          );
-          if (dto.townshipIds !== undefined) {
-            await this.validateTownships(tx, nextTownshipIds);
-          }
-          await this.lockTownshipRotations(tx, [
-            ...currentTownshipIds,
-            ...nextTownshipIds,
-          ]);
-        }
         await tx
           .update(users)
           .set({
@@ -270,19 +224,6 @@ export class RidersService {
             updatedAt: new Date(),
           })
           .where(eq(riders.id, id));
-        if (dto.townshipIds !== undefined) {
-          await tx
-            .delete(riderTownships)
-            .where(eq(riderTownships.riderId, id));
-          if (nextTownshipIds.length > 0) {
-            await tx.insert(riderTownships).values(
-              nextTownshipIds.map((townshipId) => ({
-                riderId: id,
-                townshipId,
-              })),
-            );
-          }
-        }
       });
       return this.getById(id);
     } catch (err) {
@@ -296,20 +237,6 @@ export class RidersService {
   async remove(id: string): Promise<void> {
     const existing = await this.riderOrThrow(id);
     await this.database.db.transaction(async (tx) => {
-      const [lockedRider] = await tx
-        .select({ id: riders.id })
-        .from(riders)
-        .where(eq(riders.id, id))
-        .for('update');
-      if (!lockedRider) throw new NotFoundException(`Rider '${id}' not found`);
-      const assignments = await tx
-        .select({ townshipId: riderTownships.townshipId })
-        .from(riderTownships)
-        .where(eq(riderTownships.riderId, id));
-      await this.lockTownshipRotations(
-        tx,
-        assignments.map((assignment) => assignment.townshipId),
-      );
       await tx.delete(riders).where(eq(riders.id, id));
       await tx.delete(users).where(eq(users.id, existing.userId));
     });
@@ -341,65 +268,4 @@ export class RidersService {
     return row;
   }
 
-  private uniqueTownshipIds(ids: string[]): string[] {
-    return [...new Set(ids)].sort();
-  }
-
-  private async validateTownships(
-    tx: RiderTransaction,
-    townshipIds: string[],
-  ): Promise<void> {
-    if (townshipIds.length === 0) return;
-    const rows = await tx
-      .select({ id: townships.id })
-      .from(townships)
-      .where(inArray(townships.id, townshipIds));
-    if (rows.length !== townshipIds.length) {
-      throw new BadRequestException('One or more townships were not found');
-    }
-  }
-
-  private async lockTownshipRotations(
-    tx: RiderTransaction,
-    townshipIds: string[],
-  ): Promise<void> {
-    const ids = this.uniqueTownshipIds(townshipIds);
-    if (ids.length === 0) return;
-    await tx
-      .insert(townshipRotation)
-      .values(ids.map((townshipId) => ({ townshipId })))
-      .onConflictDoNothing();
-    await tx
-      .select({ townshipId: townshipRotation.townshipId })
-      .from(townshipRotation)
-      .where(inArray(townshipRotation.townshipId, ids))
-      .orderBy(asc(townshipRotation.townshipId))
-      .for('update');
-  }
-
-  private async townshipIdsForRider(riderId: string): Promise<string[]> {
-    const assignments = await this.database.db
-      .select({ townshipId: riderTownships.townshipId })
-      .from(riderTownships)
-      .where(eq(riderTownships.riderId, riderId))
-      .orderBy(asc(riderTownships.townshipId));
-    return assignments.map((assignment) => assignment.townshipId);
-  }
-
-  private async townshipIdsForRiders(
-    riderIds: string[],
-  ): Promise<Map<string, string[]>> {
-    const result = new Map<string, string[]>();
-    for (const riderId of riderIds) result.set(riderId, []);
-    if (riderIds.length === 0) return result;
-    const assignments = await this.database.db
-      .select({ riderId: riderTownships.riderId, townshipId: riderTownships.townshipId })
-      .from(riderTownships)
-      .where(inArray(riderTownships.riderId, riderIds))
-      .orderBy(asc(riderTownships.townshipId));
-    for (const assignment of assignments) {
-      result.get(assignment.riderId)?.push(assignment.townshipId);
-    }
-    return result;
-  }
 }

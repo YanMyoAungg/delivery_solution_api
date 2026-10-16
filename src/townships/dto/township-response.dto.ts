@@ -7,8 +7,8 @@ export class TownshipResponseDto {
   @ApiProperty({ example: 'Hlaing' })
   name: string;
 
-  @ApiProperty({ description: 'Whether an ACTIVE rider is assigned to this township' })
-  selectable: boolean;
+  @ApiProperty({ example: '3500.00' })
+  defaultDeliveryFee: string;
 
   @ApiProperty()
   createdAt: string;

@@ -69,8 +69,7 @@ describe('RidersService', () => {
     const countQuery = queryChain([{ count: 1 }]);
     db.select
       .mockReturnValueOnce(dataQuery)
-      .mockReturnValueOnce(countQuery)
-      .mockReturnValueOnce(queryChain([]));
+      .mockReturnValueOnce(countQuery);
 
     const result = await service.list({ page: 1, perPage: 20 });
 
@@ -81,6 +80,16 @@ describe('RidersService', () => {
       total: 1,
       totalPages: 1,
     });
+  });
+
+  it('lists active riders available for order assignment', async () => {
+    db.select.mockReturnValue(
+      queryChain([{ id: baseRider().riderId, name: baseRider().name }]),
+    );
+
+    await expect(service.listAssignableForOrders()).resolves.toEqual([
+      { id: baseRider().riderId, name: baseRider().name },
+    ]);
   });
 
   it('throws NotFoundException for an unknown rider', async () => {
@@ -166,10 +175,6 @@ describe('RidersService', () => {
   it('updates and deletes the rider account transactionally', async () => {
     const existing = baseRider();
     const tx = {
-      select: vi
-        .fn()
-        .mockReturnValueOnce(queryChain([{ id: existing.riderId }]))
-        .mockReturnValueOnce(queryChain([])),
       update: vi.fn().mockReturnValue({
         set: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue(undefined),
@@ -185,8 +190,7 @@ describe('RidersService', () => {
     );
     db.select
       .mockReturnValueOnce(queryChain([existing]))
-      .mockReturnValueOnce(queryChain([baseRider({ name: 'Updated' })]))
-      .mockReturnValueOnce(queryChain([]));
+      .mockReturnValueOnce(queryChain([baseRider({ name: 'Updated' })]));
 
     const updated = await service.update(existing.riderId, { name: 'Updated' });
     expect(updated.name).toBe('Updated');

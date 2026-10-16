@@ -9,12 +9,12 @@ Backend for a delivery management application serving a single delivery company'
 - **Permission catalog:** 12 modules / 62 fixed keys
 - **Phase 2 — Master Data:** COMPLETE
 - **Phase 3 — Orders Core:** SUPERSEDED by the Phase 3.5 lifecycle
-- **Phase 3.5 — Townships + round-robin + rider surface:** COMPLETE (backend and frontend)
+- **Phase 3.5 — Townships + rider surface:** township-based round-robin was superseded by explicit office rider assignment; township default fees and the backend rider board flow are implemented, frontend synchronization remains next
 - **Phase 4 — Pickups:** DELETED; no pickup module/state exists
 - **Phase 5 — Delivery Operations:** PARTIAL; assignment, direct complete/fail, and retry are implemented; proof/COD collection remain deferred
 - **Phase 3.6 — Daily rider custody:** DEFERRED; shift, sign-out/sign-in, undelivered return, and 5-of-10 classification are not modeled
 - **Phase 6 — Returns + Payment Reconciliation:** DOMAIN PREFLIGHT BLOCKED; implementation not authorized
-- **Next activity:** resolve Phase 3.6 daily-custody decisions or complete Phase 6 domain preflight before implementing either workflow
+- **Next activity:** synchronize the frontend to the current manual assignment and township pricing API; Phase 3.6 remains deferred and Phase 6 remains domain-preflight blocked
 
 Known project-state findings:
 
@@ -24,17 +24,18 @@ Known project-state findings:
 - Current `OrderStatus` and `DeliveryStatus` are `ASSIGNED | DELIVERED | FAILED`; `FAILED → ASSIGNED` retry is capped at three attempts. There is no `PENDING`, `PICKED_UP`, `RECEIVED_AT_OFFICE`, `OUT_FOR_DELIVERY`, `RETURNED`, delivery `start`, or `startedAt`.
 - Delivery attempts are limited to three; the third failure leaves the order `FAILED`, retry is rejected, and there is no automatic return.
 - The Phase 6 planning notes are proposals only until the listed return, payment, reconciliation, and permission decisions are explicitly approved.
-- Current quality gate: 73 unit tests and 66 e2e tests pass with the required environment variables and seeded disposable database.
+- Current quality gate: 76 unit tests and 68 e2e tests pass with the required environment variables and seeded disposable database.
 - `RolesService.create()` accepts the caller role id but does not use it for a scope check. Existing role-management behavior is intentionally unchanged for Phase 2; current ADMIN/user-scope authorization tests pass.
 - `APP_TIMEZONE` defaults to `Asia/Yangon` and controls rider board/dashboard date boundaries.
 
 ## Current Order Intake and Rider Flow
 
 - A separate collector brings packages to the office. Office staff create an order after it arrives; the collector's pickup journey is outside this system.
-- `POST /api/v1/orders` requires a township. The API rejects a township with no active covering rider, then assigns the next rider in that township's round-robin rotation in the same transaction as the order and first delivery attempt.
-- The per-township cursor is stored in `township_rotation`; rider coverage is stored in `rider_townships`.
+- `POST /api/v1/orders` requires a township and an explicitly selected ACTIVE rider. Assignment is independent of township and the order, first delivery attempt, and assignment history are created atomically.
+- `GET /api/v1/riders/assignable` uses `orders.create` and returns only active rider ids/names. There is no rider-township coverage relationship or round-robin cursor.
+- Each township has a required `defaultDeliveryFee`. The create-order API uses that fee when no order-specific fee is supplied; an explicit fee is stored on that order. Existing township fees were backfilled to `0.00` and can be updated through township management.
 - Orders begin at `ASSIGNED` and transition to `DELIVERED` or `FAILED`. Riders do not claim or start deliveries; complete/fail acts directly on their assigned attempt.
-- `GET /api/v1/rider/board` and `/api/v1/rider/dashboard` require `deliveries.read` and derive the rider from the JWT. The board returns own orders in full and redacts other riders' orders to routing context. Riders must not receive `orders.read`.
+- `GET /api/v1/rider/board` and `/api/v1/rider/dashboard` require `deliveries.read` and derive the rider from the JWT. The board returns only orders whose latest delivery attempt is assigned to that rider, with full detail; no colleague rows or redaction path remains. Riders must not receive `orders.read`.
 - Office order/delivery history uses `orders.read`; office reassign uses `orders.update`. Phase 3.6 custody and Phase 6 returns/payment reconciliation are separate deferred workflows.
 
 ## Tech Stack
@@ -206,7 +207,7 @@ Returns, payments/reconciliation, notifications/Viber, and reports are later pha
 - [x] **Foundation** — app/API infra, Drizzle pipeline, Swagger, health, Docker dev environment
 - [x] **Phase 1 — Users + Auth + RBAC** — JWT login, fixed permission catalog with dynamic role grants, user CRUD, OWNER seed
 - [x] **Phase 2 — Master Data (shops, customers, riders)**
-- [x] Phase 3.5 — Townships, round-robin assignment, rider board/dashboard
+- [x] Phase 3.5 — Townships, manual rider assignment, township default fees, rider board/dashboard
 - [x] Phase 4 — Pickups deleted (package collection/intake is out of system)
 - [ ] Phase 3.6 — Daily rider custody (deferred)
 - [x] Phase 5 — Delivery operations core (direct complete/fail, retry; proof/COD collection deferred)

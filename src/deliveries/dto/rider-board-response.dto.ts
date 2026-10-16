@@ -19,9 +19,6 @@ export class RiderBoardResponseDto {
   @ApiProperty({ example: '2026-09-29' })
   date: string;
 
-  @ApiProperty({ enum: ['mine', 'all'] })
-  filter: 'mine' | 'all';
-
   @ApiProperty({ type: [RiderBoardOrderDto] })
   data: RiderBoardOrderDto[];
 
