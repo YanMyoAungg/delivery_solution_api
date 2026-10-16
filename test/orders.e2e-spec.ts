@@ -90,7 +90,11 @@ describe('Orders (e2e)', () => {
     const shop = await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: `Orders Shop ${run}` })
+      .send({
+        name: `Orders Shop ${run}`,
+        channelType: 'TELEGRAM',
+        channelName: `OrdersShop${run}`,
+      })
       .expect(201);
     shopId = shop.body.id as string;
 

@@ -20,6 +20,7 @@ function toCustomerResponse(
     name: row.name,
     phone: row.phone,
     address: row.address,
+    notes: row.notes,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -74,6 +75,7 @@ export class CustomersService {
         name: dto.name.trim(),
         phone: dto.phone ?? null,
         address: dto.address ?? null,
+        notes: dto.notes ?? null,
       })
       .returning();
     return toCustomerResponse(row);
@@ -90,6 +92,7 @@ export class CustomersService {
         ...(dto.name !== undefined && { name: dto.name.trim() }),
         ...(dto.phone !== undefined && { phone: dto.phone }),
         ...(dto.address !== undefined && { address: dto.address }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
         updatedAt: new Date(),
       })
       .where(eq(customers.id, id))

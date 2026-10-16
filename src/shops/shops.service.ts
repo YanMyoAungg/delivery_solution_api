@@ -24,6 +24,9 @@ function toShopResponse(
     name: row.name,
     phone: row.phone,
     address: row.address,
+    notes: row.notes,
+    channelType: row.channelType,
+    channelName: row.channelName,
     hasLogin,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -44,6 +47,7 @@ export class ShopsService {
             ilike(shops.name, search),
             ilike(shops.phone, search),
             ilike(shops.address, search),
+            ilike(shops.channelName, search),
           );
         })()
       : undefined;
@@ -68,6 +72,9 @@ export class ShopsService {
           name: shops.name,
           phone: shops.phone,
           address: shops.address,
+          notes: shops.notes,
+          channelType: shops.channelType,
+          channelName: shops.channelName,
           createdAt: shops.createdAt,
           updatedAt: shops.updatedAt,
           hasLogin: hasLoginExpression,
@@ -97,6 +104,9 @@ export class ShopsService {
         name: shops.name,
         phone: shops.phone,
         address: shops.address,
+        notes: shops.notes,
+        channelType: shops.channelType,
+        channelName: shops.channelName,
         createdAt: shops.createdAt,
         updatedAt: shops.updatedAt,
         hasLogin: sql<boolean>`${exists(
@@ -120,6 +130,9 @@ export class ShopsService {
           name: dto.name.trim(),
           phone: dto.phone ?? null,
           address: dto.address ?? null,
+          notes: dto.notes ?? null,
+          channelType: dto.channelType,
+          channelName: dto.channelName.trim(),
         })
         .returning();
       return toShopResponse(row, false);
@@ -140,6 +153,9 @@ export class ShopsService {
           ...(dto.name !== undefined && { name: dto.name.trim() }),
           ...(dto.phone !== undefined && { phone: dto.phone }),
           ...(dto.address !== undefined && { address: dto.address }),
+          ...(dto.notes !== undefined && { notes: dto.notes }),
+          ...(dto.channelType !== undefined && { channelType: dto.channelType }),
+          ...(dto.channelName !== undefined && { channelName: dto.channelName.trim() }),
           updatedAt: new Date(),
         })
         .where(eq(shops.id, id))

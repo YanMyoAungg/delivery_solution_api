@@ -13,6 +13,12 @@ function baseRider(overrides: Record<string, unknown> = {}) {
     phone: '09123456789',
     status: 'ACTIVE' as const,
     commissionPerWayOverride: null,
+    vehicleType: 'BIKE' as const,
+    vehiclePlate: null,
+    licenseNo: null,
+    nrcNumber: null,
+    emergencyContactPhone: null,
+    notes: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -125,6 +131,12 @@ describe('RidersService', () => {
     );
     expect(riderInsert.values).toHaveBeenCalledWith({
       userId: baseRider().userId,
+      vehicleType: 'BIKE',
+      vehiclePlate: null,
+      licenseNo: null,
+      nrcNumber: null,
+      emergencyContactPhone: null,
+      notes: null,
     });
   });
 

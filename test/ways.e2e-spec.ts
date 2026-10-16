@@ -69,7 +69,11 @@ describe('Phase C ways and commission (e2e)', () => {
     createdUserIds.push(admin.id, officer.id, riderUser.id);
     const [rider] = await database.db.insert(riders).values({ userId: riderUser.id }).returning({ id: riders.id });
     riderId = rider.id;
-    const [shop] = await database.db.insert(shops).values({ name: `Phase C Shop ${run}` }).returning({ id: shops.id });
+    const [shop] = await database.db.insert(shops).values({
+      name: `Phase C Shop ${run}`,
+      channelType: 'TELEGRAM',
+      channelName: `PhaseCShop${run}`,
+    }).returning({ id: shops.id });
     shopId = shop.id;
     const [customer] = await database.db.insert(customers).values({
       name: `Phase C Customer ${run}`, phone: '09123456789', address: 'Ways e2e street',

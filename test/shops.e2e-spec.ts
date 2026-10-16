@@ -81,6 +81,8 @@ describe('Shops (e2e)', () => {
         name: `Shop ${run}`,
         phone: '09123456789',
         address: 'Main Road',
+        channelType: 'VIBER',
+        channelName: `ShopChannel${run}`,
       })
       .expect(201);
     const shopId = created.body.id as string;
@@ -124,36 +126,98 @@ describe('Shops (e2e)', () => {
 
   it('validates payloads and rejects duplicate names', async () => {
     const name = `Duplicate Shop ${run}`;
+    const payload = { name, channelType: 'VIBER', channelName: `Duplicate${run}` };
     const first = await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name })
+      .send(payload)
       .expect(201);
     createdShopIds.push(first.body.id as string);
 
     await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name })
+      .send(payload)
       .expect(409);
 
     await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: '' })
+      .send({ ...payload, name: '' })
       .expect(400);
+  });
+
+  it('requires valid channel details and supports updating/searching them', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/shops')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Missing Channel ${run}` })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/shops')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Invalid Channel ${run}`,
+        channelType: 'WHATSAPP',
+        channelName: `Invalid${run}`,
+      })
+      .expect(400);
+
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/shops')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Channel Update ${run}`,
+        channelType: 'VIBER',
+        channelName: `BeforeUpdate${run}`,
+      })
+      .expect(201);
+    const shopId = created.body.id as string;
+    createdShopIds.push(shopId);
+
+    const updated = await request(app.getHttpServer())
+      .patch(`/api/v1/shops/${shopId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        channelType: 'TELEGRAM',
+        channelName: `AfterUpdate${run}`,
+        notes: 'Updated note',
+      })
+      .expect(200);
+    expect(updated.body).toMatchObject({
+      channelType: 'TELEGRAM',
+      channelName: `AfterUpdate${run}`,
+      notes: 'Updated note',
+    });
+
+    const searched = await request(app.getHttpServer())
+      .get(`/api/v1/shops?search=AfterUpdate${run}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(searched.body.data).toContainEqual(
+      expect.objectContaining({ id: shopId }),
+    );
   });
 
   it('rejects a second login for a shop and filters shops without logins', async () => {
     const occupied = await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: `Occupied Shop ${run}` })
+      .send({
+        name: `Occupied Shop ${run}`,
+        channelType: 'VIBER',
+        channelName: `OccupiedShop${run}`,
+      })
       .expect(201);
     const free = await request(app.getHttpServer())
       .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: `Free Shop ${run}` })
+      .send({
+        name: `Free Shop ${run}`,
+        channelType: 'TELEGRAM',
+        channelName: `FreeShop${run}`,
+      })
       .expect(201);
     createdShopIds.push(occupied.body.id as string, free.body.id as string);
 

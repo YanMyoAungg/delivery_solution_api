@@ -38,7 +38,7 @@ describe('Customers (e2e)', () => {
       .values({
         name: 'Customers E2E Owner',
         email: `customers-owner-${run}@e2e.local`,
-        passwordHash: await hashPassword('owner1234'),
+        passwordHash: await hashPassword('Password1234'),
         roleId: role.id,
         status: 'ACTIVE',
       })
@@ -49,7 +49,7 @@ describe('Customers (e2e)', () => {
       .post('/api/v1/auth/login')
       .send({
         email: `customers-owner-${run}@e2e.local`,
-        password: 'owner1234',
+        password: 'Password1234',
       })
       .expect(200);
     ownerToken = login.body.accessToken as string;
@@ -75,12 +75,14 @@ describe('Customers (e2e)', () => {
         name: `Customer ${run}`,
         phone: '09123456789',
         address: 'Main Road',
+        notes: 'Prefers morning delivery',
       })
       .expect(201);
     const customerId = created.body.id as string;
     createdCustomerIds.push(customerId);
 
     expect(created.body.name).toBe(`Customer ${run}`);
+    expect(created.body.notes).toBe('Prefers morning delivery');
     expect(created.body).not.toHaveProperty('passwordHash');
 
     const listed = await request(app.getHttpServer())

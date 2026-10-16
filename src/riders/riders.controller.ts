@@ -29,6 +29,7 @@ import { ListRidersQueryDto } from './dto/list-riders-query.dto.js';
 import { RiderListResponseDto } from './dto/rider-list-response.dto.js';
 import { RiderResponseDto } from './dto/rider-response.dto.js';
 import { UpdateRiderDto } from './dto/update-rider.dto.js';
+import { AssignableRiderResponseDto } from './dto/assignable-rider-response.dto.js';
 import { RidersService } from './riders.service.js';
 
 @ApiTags('Riders')
@@ -60,6 +61,14 @@ export class RidersController {
     @CurrentUser() currentUser: AuthenticatedUser,
   ): Promise<RiderDeliveredResponseDto> {
     return this.ordersService.submitRiderDelivered(id, currentUser.id);
+  }
+
+  @Get('assignable')
+  @RequirePermissions('orders.create')
+  @ApiOperation({ summary: 'List active riders available for order assignment' })
+  @ApiOkResponse({ type: [AssignableRiderResponseDto] })
+  listAssignable(): Promise<AssignableRiderResponseDto[]> {
+    return this.ridersService.listAssignable();
   }
 
   @Get()

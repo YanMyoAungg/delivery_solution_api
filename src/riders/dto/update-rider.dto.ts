@@ -9,6 +9,10 @@ import {
   Matches,
 } from 'class-validator';
 import { USER_STATUSES, type UserStatus } from '../../users/user.schema.js';
+import {
+  RIDER_VEHICLE_TYPES,
+  type RiderVehicleType,
+} from '../rider.schema.js';
 
 export class UpdateRiderDto {
   @ApiPropertyOptional({ example: 'John Rider Updated' })
@@ -46,4 +50,39 @@ export class UpdateRiderDto {
   @Matches(/^\d+(\.\d{1,2})?$/)
   @MaxLength(13)
   commissionPerWayOverride?: string | null;
+
+  @ApiPropertyOptional({ enum: RIDER_VEHICLE_TYPES, default: 'BIKE' })
+  @IsOptional()
+  @IsEnum(RIDER_VEHICLE_TYPES)
+  vehicleType?: RiderVehicleType;
+
+  @ApiPropertyOptional({ example: 'MDY-1234', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  vehiclePlate?: string | null;
+
+  @ApiPropertyOptional({ example: 'DL-2024-99812', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  licenseNo?: string | null;
+
+  @ApiPropertyOptional({ example: '09/LaMaNa(N)123456', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  nrcNumber?: string | null;
+
+  @ApiPropertyOptional({ example: '09111111111', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  emergencyContactPhone?: string | null;
+
+  @ApiPropertyOptional({ example: 'Prefers north townships', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string | null;
 }

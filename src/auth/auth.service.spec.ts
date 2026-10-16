@@ -69,7 +69,7 @@ describe('AuthService', () => {
 
   describe('login', () => {
     it('issues an access token that excludes the password hash', async () => {
-      const passwordHash = await hashPassword('owner1234');
+      const passwordHash = await hashPassword('Password1234');
       usersService.findByEmailWithPassword.mockResolvedValue(
         baseUser({ passwordHash }),
       );
@@ -77,7 +77,7 @@ describe('AuthService', () => {
 
       const result = await service.login({
         email: 'owner@mail.com',
-        password: 'owner1234',
+        password: 'Password1234',
       });
 
       expect(result.accessToken).toBe('signed-token');
@@ -103,7 +103,7 @@ describe('AuthService', () => {
     });
 
     it('rejects a wrong password', async () => {
-      const passwordHash = await hashPassword('owner1234');
+      const passwordHash = await hashPassword('Password1234');
       usersService.findByEmailWithPassword.mockResolvedValue(
         baseUser({ passwordHash }),
       );
@@ -114,13 +114,13 @@ describe('AuthService', () => {
     });
 
     it('rejects a deactivated account even with valid credentials', async () => {
-      const passwordHash = await hashPassword('owner1234');
+      const passwordHash = await hashPassword('Password1234');
       usersService.findByEmailWithPassword.mockResolvedValue(
         baseUser({ passwordHash, status: 'INACTIVE' }),
       );
 
       await expect(
-        service.login({ email: 'owner@mail.com', password: 'owner1234' }),
+        service.login({ email: 'owner@mail.com', password: 'Password1234' }),
       ).rejects.toBeInstanceOf(UnauthorizedException);
       expect(jwt.signAsync).not.toHaveBeenCalled();
     });
@@ -128,7 +128,7 @@ describe('AuthService', () => {
 
   describe('changePassword', () => {
     it('throws when the current password is wrong', async () => {
-      const passwordHash = await hashPassword('owner1234');
+      const passwordHash = await hashPassword('Password1234');
       usersService.findByIdWithPassword.mockResolvedValue({ passwordHash });
 
       await expect(
@@ -141,11 +141,11 @@ describe('AuthService', () => {
     });
 
     it('hashes and persists a new password', async () => {
-      const passwordHash = await hashPassword('owner1234');
+      const passwordHash = await hashPassword('Password1234');
       usersService.findByIdWithPassword.mockResolvedValue({ passwordHash });
 
       await service.changePassword('11111111-1111-4111-8111-111111111111', {
-        currentPassword: 'owner1234',
+        currentPassword: 'Password1234',
         newPassword: 'newpassword1',
       });
 
@@ -159,7 +159,7 @@ describe('AuthService', () => {
 
       await expect(
         service.changePassword('does-not-exist', {
-          currentPassword: 'owner1234',
+          currentPassword: 'Password1234',
           newPassword: 'newpassword1',
         }),
       ).rejects.toBeInstanceOf(UnauthorizedException);

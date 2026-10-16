@@ -1,6 +1,6 @@
 {
-  "id": "e58654dc-6d3b-4ddf-a845-5512c1905514",
-  "prevId": "67a9a561-06e0-4e32-9f5f-f8d8c6785598",
+  "id": "66db1ad3-74cc-4d96-bdc4-6e133c482218",
+  "prevId": "312a35e2-0f49-4349-b2b5-6a6cf38ba8c9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -44,12 +44,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "shop_id": {
-          "name": "shop_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "status": {
           "name": "status",
@@ -96,21 +90,6 @@
           "method": "btree",
           "with": {}
         },
-        "users_shop_unique": {
-          "name": "users_shop_unique",
-          "columns": [
-            {
-              "expression": "shop_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "users_role_idx": {
           "name": "users_role_idx",
           "columns": [
@@ -139,19 +118,6 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "users_shop_id_shops_id_fk": {
-          "name": "users_shop_id_shops_id_fk",
-          "tableFrom": "users",
-          "tableTo": "shops",
-          "columnsFrom": [
-            "shop_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -385,6 +351,25 @@
           "primaryKey": false,
           "notNull": false
         },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "channel_type": {
+          "name": "channel_type",
+          "type": "shop_channel_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel_name": {
+          "name": "channel_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -430,6 +415,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "shops_channel_type_idx": {
+          "name": "shops_channel_type_idx",
+          "columns": [
+            {
+              "expression": "channel_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -464,6 +464,12 @@
         },
         "address": {
           "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -539,9 +545,41 @@
           "primaryKey": false,
           "notNull": true
         },
-        "commission_per_way_override": {
-          "name": "commission_per_way_override",
-          "type": "numeric(12, 2)",
+        "vehicle_type": {
+          "name": "vehicle_type",
+          "type": "rider_vehicle_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'BIKE'"
+        },
+        "vehicle_plate": {
+          "name": "vehicle_plate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "license_no": {
+          "name": "license_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nrc_number": {
+          "name": "nrc_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "emergency_contact_phone": {
+          "name": "emergency_contact_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -598,403 +636,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.townships": {
-      "name": "townships",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "default_delivery_fee": {
-          "name": "default_delivery_fee",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "lead_time_days": {
-          "name": "lead_time_days",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "default_assignee_type": {
-          "name": "default_assignee_type",
-          "type": "township_default_assignee_type",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "default_rider_id": {
-          "name": "default_rider_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "default_partner_id": {
-          "name": "default_partner_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "townships_name_unique": {
-          "name": "townships_name_unique",
-          "columns": [
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "townships_default_rider_idx": {
-          "name": "townships_default_rider_idx",
-          "columns": [
-            {
-              "expression": "default_rider_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "townships_default_partner_idx": {
-          "name": "townships_default_partner_idx",
-          "columns": [
-            {
-              "expression": "default_partner_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "townships_default_rider_id_riders_id_fk": {
-          "name": "townships_default_rider_id_riders_id_fk",
-          "tableFrom": "townships",
-          "tableTo": "riders",
-          "columnsFrom": [
-            "default_rider_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "townships_default_partner_id_delivery_partners_id_fk": {
-          "name": "townships_default_partner_id_delivery_partners_id_fk",
-          "tableFrom": "townships",
-          "tableTo": "delivery_partners",
-          "columnsFrom": [
-            "default_partner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "townships_default_assignee_consistency_check": {
-          "name": "townships_default_assignee_consistency_check",
-          "value": "(\"townships\".\"default_assignee_type\" is null and \"townships\".\"default_rider_id\" is null and \"townships\".\"default_partner_id\" is null) or (\"townships\".\"default_assignee_type\" = 'RIDER' and \"townships\".\"default_rider_id\" is not null and \"townships\".\"default_partner_id\" is null) or (\"townships\".\"default_assignee_type\" = 'PARTNER' and \"townships\".\"default_partner_id\" is not null and \"townships\".\"default_rider_id\" is null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.delivery_partners": {
-      "name": "delivery_partners",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "phone": {
-          "name": "phone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "delivery_partners_name_unique": {
-          "name": "delivery_partners_name_unique",
-          "columns": [
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "delivery_partners_active_idx": {
-          "name": "delivery_partners_active_idx",
-          "columns": [
-            {
-              "expression": "is_active",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.ways": {
-      "name": "ways",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "rider_id": {
-          "name": "rider_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "way_date": {
-          "name": "way_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "commission_rate": {
-          "name": "commission_rate",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'500'"
-        },
-        "is_open": {
-          "name": "is_open",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "is_paid_without_delivery": {
-          "name": "is_paid_without_delivery",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "pay_anyway_reason": {
-          "name": "pay_anyway_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pay_anyway_by": {
-          "name": "pay_anyway_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pay_anyway_at": {
-          "name": "pay_anyway_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "ways_open_rider_date_unique": {
-          "name": "ways_open_rider_date_unique",
-          "columns": [
-            {
-              "expression": "rider_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "way_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"ways\".\"is_open\" = true",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ways_rider_date_idx": {
-          "name": "ways_rider_date_idx",
-          "columns": [
-            {
-              "expression": "rider_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "way_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ways_rider_id_riders_id_fk": {
-          "name": "ways_rider_id_riders_id_fk",
-          "tableFrom": "ways",
-          "tableTo": "riders",
-          "columnsFrom": [
-            "rider_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "ways_pay_anyway_by_users_id_fk": {
-          "name": "ways_pay_anyway_by_users_id_fk",
-          "tableFrom": "ways",
-          "tableTo": "users",
-          "columnsFrom": [
-            "pay_anyway_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.orders": {
       "name": "orders",
       "schema": "",
@@ -1028,45 +669,13 @@
           "name": "township_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "assignee_type": {
-          "name": "assignee_type",
-          "type": "assignee_type",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rider_id": {
-          "name": "rider_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "partner_id": {
-          "name": "partner_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "partner_tracking_no": {
-          "name": "partner_tracking_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "package_info": {
           "name": "package_info",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
-        },
-        "package_price": {
-          "name": "package_price",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
         },
         "delivery_fee": {
           "name": "delivery_fee",
@@ -1082,64 +691,13 @@
           "notNull": true,
           "default": "'0'"
         },
-        "is_package_paid_to_shop": {
-          "name": "is_package_paid_to_shop",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "is_fee_paid_to_shop": {
-          "name": "is_fee_paid_to_shop",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "partner_fee": {
-          "name": "partner_fee",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "estimated_delivery_date": {
-          "name": "estimated_delivery_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "delivered_at": {
-          "name": "delivered_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "way_id": {
-          "name": "way_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "delivery_address": {
-          "name": "delivery_address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancel_reason": {
-          "name": "cancel_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
           "type": "order_status",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'PENDING'"
+          "default": "'ASSIGNED'"
         },
         "notes": {
           "name": "notes",
@@ -1223,6 +781,27 @@
           "method": "btree",
           "with": {}
         },
+        "orders_township_created_at_idx": {
+          "name": "orders_township_created_at_idx",
+          "columns": [
+            {
+              "expression": "township_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "orders_created_at_idx": {
           "name": "orders_created_at_idx",
           "columns": [
@@ -1249,51 +828,6 @@
             },
             {
               "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "orders_delivered_at_idx": {
-          "name": "orders_delivered_at_idx",
-          "columns": [
-            {
-              "expression": "delivered_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "orders_township_idx": {
-          "name": "orders_township_idx",
-          "columns": [
-            {
-              "expression": "township_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "orders_rider_idx": {
-          "name": "orders_rider_idx",
-          "columns": [
-            {
-              "expression": "rider_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1344,60 +878,12 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
-        },
-        "orders_rider_id_riders_id_fk": {
-          "name": "orders_rider_id_riders_id_fk",
-          "tableFrom": "orders",
-          "tableTo": "riders",
-          "columnsFrom": [
-            "rider_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "orders_partner_id_delivery_partners_id_fk": {
-          "name": "orders_partner_id_delivery_partners_id_fk",
-          "tableFrom": "orders",
-          "tableTo": "delivery_partners",
-          "columnsFrom": [
-            "partner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "orders_way_id_ways_id_fk": {
-          "name": "orders_way_id_ways_id_fk",
-          "tableFrom": "orders",
-          "tableTo": "ways",
-          "columnsFrom": [
-            "way_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "orders_assignee_consistency_check": {
-          "name": "orders_assignee_consistency_check",
-          "value": "(\"orders\".\"assignee_type\" is null and \"orders\".\"rider_id\" is null and \"orders\".\"partner_id\" is null) or (\"orders\".\"assignee_type\" = 'RIDER' and \"orders\".\"rider_id\" is not null and \"orders\".\"partner_id\" is null) or (\"orders\".\"assignee_type\" = 'PARTNER' and \"orders\".\"partner_id\" is not null and \"orders\".\"rider_id\" is null)"
-        },
-        "orders_partner_way_consistency_check": {
-          "name": "orders_partner_way_consistency_check",
-          "value": "\"orders\".\"assignee_type\" is distinct from 'PARTNER' or \"orders\".\"way_id\" is null"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.order_status_history": {
@@ -1440,30 +926,6 @@
         "note": {
           "name": "note",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "internal_note": {
-          "name": "internal_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "previous_assignee": {
-          "name": "previous_assignee",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "new_assignee": {
-          "name": "new_assignee",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -1547,8 +1009,107 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.order_field_audit": {
-      "name": "order_field_audit",
+    "public.pickup_orders": {
+      "name": "pickup_orders",
+      "schema": "",
+      "columns": {
+        "pickup_id": {
+          "name": "pickup_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {
+        "pickup_orders_active_order_unique": {
+          "name": "pickup_orders_active_order_unique",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"pickup_orders\".\"active\" = true",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pickup_orders_order_idx": {
+          "name": "pickup_orders_order_idx",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pickup_orders_pickup_id_pickups_id_fk": {
+          "name": "pickup_orders_pickup_id_pickups_id_fk",
+          "tableFrom": "pickup_orders",
+          "tableTo": "pickups",
+          "columnsFrom": [
+            "pickup_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "pickup_orders_order_id_orders_id_fk": {
+          "name": "pickup_orders_order_id_orders_id_fk",
+          "tableFrom": "pickup_orders",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "pickup_orders_pickup_id_order_id_pk": {
+          "name": "pickup_orders_pickup_id_order_id_pk",
+          "columns": [
+            "pickup_id",
+            "order_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pickups": {
+      "name": "pickups",
       "schema": "",
       "columns": {
         "id": {
@@ -1558,38 +1119,34 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "order_id": {
-          "name": "order_id",
-          "type": "uuid",
+        "scheduled_at": {
+          "name": "scheduled_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
         },
-        "field": {
-          "name": "field",
+        "status": {
+          "name": "status",
+          "type": "pickup_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'SCHEDULED'"
+        },
+        "notes": {
+          "name": "notes",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
-        },
-        "old_value": {
-          "name": "old_value",
-          "type": "jsonb",
-          "primaryKey": false,
           "notNull": false
         },
-        "new_value": {
-          "name": "new_value",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "actor_id": {
-          "name": "actor_id",
+        "created_by": {
+          "name": "created_by",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "reason": {
-          "name": "reason",
+        "idempotency_key": {
+          "name": "idempotency_key",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -1610,8 +1167,535 @@
         }
       },
       "indexes": {
-        "order_field_audit_order_created_idx": {
-          "name": "order_field_audit_order_created_idx",
+        "pickups_status_scheduled_idx": {
+          "name": "pickups_status_scheduled_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scheduled_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pickups_creator_idempotency_unique": {
+          "name": "pickups_creator_idempotency_unique",
+          "columns": [
+            {
+              "expression": "created_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pickups_created_by_users_id_fk": {
+          "name": "pickups_created_by_users_id_fk",
+          "tableFrom": "pickups",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.rider_townships": {
+      "name": "rider_townships",
+      "schema": "",
+      "columns": {
+        "rider_id": {
+          "name": "rider_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "township_id": {
+          "name": "township_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "rider_townships_township_idx": {
+          "name": "rider_townships_township_idx",
+          "columns": [
+            {
+              "expression": "township_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "rider_townships_rider_id_riders_id_fk": {
+          "name": "rider_townships_rider_id_riders_id_fk",
+          "tableFrom": "rider_townships",
+          "tableTo": "riders",
+          "columnsFrom": [
+            "rider_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "rider_townships_township_id_townships_id_fk": {
+          "name": "rider_townships_township_id_townships_id_fk",
+          "tableFrom": "rider_townships",
+          "tableTo": "townships",
+          "columnsFrom": [
+            "township_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "rider_townships_rider_id_township_id_pk": {
+          "name": "rider_townships_rider_id_township_id_pk",
+          "columns": [
+            "rider_id",
+            "township_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.township_rotation": {
+      "name": "township_rotation",
+      "schema": "",
+      "columns": {
+        "township_id": {
+          "name": "township_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last_assigned_rider_id": {
+          "name": "last_assigned_rider_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "township_rotation_township_id_townships_id_fk": {
+          "name": "township_rotation_township_id_townships_id_fk",
+          "tableFrom": "township_rotation",
+          "tableTo": "townships",
+          "columnsFrom": [
+            "township_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "township_rotation_last_assigned_rider_id_riders_id_fk": {
+          "name": "township_rotation_last_assigned_rider_id_riders_id_fk",
+          "tableFrom": "township_rotation",
+          "tableTo": "riders",
+          "columnsFrom": [
+            "last_assigned_rider_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.townships": {
+      "name": "townships",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "townships_name_unique": {
+          "name": "townships_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.delivery_attempt_history": {
+      "name": "delivery_attempt_history",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "delivery_attempt_id": {
+          "name": "delivery_attempt_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event": {
+          "name": "event",
+          "type": "delivery_history_event",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "previous_rider_id": {
+          "name": "previous_rider_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_rider_id": {
+          "name": "new_rider_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "delivery_attempt_history_attempt_created_idx": {
+          "name": "delivery_attempt_history_attempt_created_idx",
+          "columns": [
+            {
+              "expression": "delivery_attempt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "delivery_attempt_history_delivery_attempt_id_delivery_attempts_id_fk": {
+          "name": "delivery_attempt_history_delivery_attempt_id_delivery_attempts_id_fk",
+          "tableFrom": "delivery_attempt_history",
+          "tableTo": "delivery_attempts",
+          "columnsFrom": [
+            "delivery_attempt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "delivery_attempt_history_actor_id_users_id_fk": {
+          "name": "delivery_attempt_history_actor_id_users_id_fk",
+          "tableFrom": "delivery_attempt_history",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "delivery_attempt_history_previous_rider_id_riders_id_fk": {
+          "name": "delivery_attempt_history_previous_rider_id_riders_id_fk",
+          "tableFrom": "delivery_attempt_history",
+          "tableTo": "riders",
+          "columnsFrom": [
+            "previous_rider_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "delivery_attempt_history_new_rider_id_riders_id_fk": {
+          "name": "delivery_attempt_history_new_rider_id_riders_id_fk",
+          "tableFrom": "delivery_attempt_history",
+          "tableTo": "riders",
+          "columnsFrom": [
+            "new_rider_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.delivery_attempts": {
+      "name": "delivery_attempts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rider_id": {
+          "name": "rider_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt_number": {
+          "name": "attempt_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "delivery_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ASSIGNED'"
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "failure_reason",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_note": {
+          "name": "failure_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assigned_by": {
+          "name": "assigned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assigned_at": {
+          "name": "assigned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_at": {
+          "name": "failed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "delivery_attempts_order_attempt_unique": {
+          "name": "delivery_attempts_order_attempt_unique",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "attempt_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "delivery_attempts_one_active_order_unique": {
+          "name": "delivery_attempts_one_active_order_unique",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"delivery_attempts\".\"status\" = 'ASSIGNED'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "delivery_attempts_order_created_idx": {
+          "name": "delivery_attempts_order_created_idx",
           "columns": [
             {
               "expression": "order_id",
@@ -1631,11 +1715,17 @@
           "method": "btree",
           "with": {}
         },
-        "order_field_audit_actor_idx": {
-          "name": "order_field_audit_actor_idx",
+        "delivery_attempts_rider_status_idx": {
+          "name": "delivery_attempts_rider_status_idx",
           "columns": [
             {
-              "expression": "actor_id",
+              "expression": "rider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1648,9 +1738,9 @@
         }
       },
       "foreignKeys": {
-        "order_field_audit_order_id_orders_id_fk": {
-          "name": "order_field_audit_order_id_orders_id_fk",
-          "tableFrom": "order_field_audit",
+        "delivery_attempts_order_id_orders_id_fk": {
+          "name": "delivery_attempts_order_id_orders_id_fk",
+          "tableFrom": "delivery_attempts",
           "tableTo": "orders",
           "columnsFrom": [
             "order_id"
@@ -1661,12 +1751,25 @@
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
-        "order_field_audit_actor_id_users_id_fk": {
-          "name": "order_field_audit_actor_id_users_id_fk",
-          "tableFrom": "order_field_audit",
+        "delivery_attempts_rider_id_riders_id_fk": {
+          "name": "delivery_attempts_rider_id_riders_id_fk",
+          "tableFrom": "delivery_attempts",
+          "tableTo": "riders",
+          "columnsFrom": [
+            "rider_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "delivery_attempts_assigned_by_users_id_fk": {
+          "name": "delivery_attempts_assigned_by_users_id_fk",
+          "tableFrom": "delivery_attempts",
           "tableTo": "users",
           "columnsFrom": [
-            "actor_id"
+            "assigned_by"
           ],
           "columnsTo": [
             "id"
@@ -1675,69 +1778,6 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.app_settings": {
-      "name": "app_settings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'500'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "app_settings_key_unique": {
-          "name": "app_settings_key_unique",
-          "columns": [
-            {
-              "expression": "key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -1754,32 +1794,72 @@
         "INACTIVE"
       ]
     },
-    "public.township_default_assignee_type": {
-      "name": "township_default_assignee_type",
+    "public.shop_channel_type": {
+      "name": "shop_channel_type",
       "schema": "public",
       "values": [
-        "RIDER",
-        "PARTNER"
+        "VIBER",
+        "TELEGRAM"
       ]
     },
-    "public.assignee_type": {
-      "name": "assignee_type",
+    "public.rider_vehicle_type": {
+      "name": "rider_vehicle_type",
       "schema": "public",
       "values": [
-        "RIDER",
-        "PARTNER"
+        "BIKE",
+        "MOTORBIKE",
+        "CAR",
+        "OTHER"
       ]
     },
     "public.order_status": {
       "name": "order_status",
       "schema": "public",
       "values": [
-        "PENDING",
         "ASSIGNED",
-        "AWAITING_APPROVAL",
         "DELIVERED",
-        "RETURNED",
+        "FAILED"
+      ]
+    },
+    "public.pickup_status": {
+      "name": "pickup_status",
+      "schema": "public",
+      "values": [
+        "SCHEDULED",
+        "COMPLETED",
         "CANCELLED"
+      ]
+    },
+    "public.delivery_history_event": {
+      "name": "delivery_history_event",
+      "schema": "public",
+      "values": [
+        "ASSIGNED",
+        "REASSIGNED",
+        "DELIVERED",
+        "FAILED",
+        "RETRY_CREATED"
+      ]
+    },
+    "public.delivery_status": {
+      "name": "delivery_status",
+      "schema": "public",
+      "values": [
+        "ASSIGNED",
+        "DELIVERED",
+        "FAILED"
+      ]
+    },
+    "public.failure_reason": {
+      "name": "failure_reason",
+      "schema": "public",
+      "values": [
+        "CUSTOMER_UNAVAILABLE",
+        "WRONG_ADDRESS",
+        "CUSTOMER_REFUSED",
+        "CUSTOMER_RESCHEDULED",
+        "DAMAGED_PACKAGE",
+        "OTHER"
       ]
     }
   },

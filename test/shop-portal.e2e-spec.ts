@@ -116,8 +116,16 @@ describe('Phase E shop portal (e2e)', () => {
     const portalExport = await database.db.query.permissions.findFirst({ where: eq(permissions.name, 'shop-reports.export') });
     if (!portalRead || !portalExport) throw new Error('Shop portal permissions are missing; re-run pnpm db:seed');
 
-    const [shop] = await database.db.insert(shops).values({ name: `Portal Shop ${run}` }).returning({ id: shops.id });
-    const [otherShop] = await database.db.insert(shops).values({ name: `Portal Other Shop ${run}` }).returning({ id: shops.id });
+    const [shop] = await database.db.insert(shops).values({
+      name: `Portal Shop ${run}`,
+      channelType: 'TELEGRAM',
+      channelName: `PortalShop${run}`,
+    }).returning({ id: shops.id });
+    const [otherShop] = await database.db.insert(shops).values({
+      name: `Portal Other Shop ${run}`,
+      channelType: 'TELEGRAM',
+      channelName: `PortalOtherShop${run}`,
+    }).returning({ id: shops.id });
     shopId = shop.id;
     otherShopId = otherShop.id;
     const adminRole = await database.db.query.roles.findFirst({ where: eq(roles.name, 'ADMIN') });

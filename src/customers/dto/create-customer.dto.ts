@@ -19,4 +19,10 @@ export class CreateCustomerDto {
   @IsString()
   @MaxLength(500)
   address?: string | null;
+
+  @ApiPropertyOptional({ example: 'Prefers morning delivery', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string | null;
 }

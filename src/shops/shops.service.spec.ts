@@ -9,6 +9,9 @@ function baseShop(overrides: Record<string, unknown> = {}) {
     name: 'Central Shop',
     phone: '09123456789',
     address: 'Main Road',
+    notes: 'Deliver before 6pm',
+    channelType: 'VIBER',
+    channelName: 'CentralShop',
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -93,6 +96,9 @@ describe('ShopsService', () => {
       name: ' Central Shop ',
       phone: '09123456789',
       address: 'Main Road',
+      notes: 'Deliver before 6pm',
+      channelType: 'VIBER',
+      channelName: ' CentralShop ',
     });
 
     expect(result.id).toBe(baseShop().id);
@@ -101,6 +107,9 @@ describe('ShopsService', () => {
       name: 'Central Shop',
       phone: '09123456789',
       address: 'Main Road',
+      notes: 'Deliver before 6pm',
+      channelType: 'VIBER',
+      channelName: 'CentralShop',
     });
   });
 
@@ -113,9 +122,13 @@ describe('ShopsService', () => {
       }),
     });
 
-    await expect(service.create({ name: 'Central Shop' })).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      service.create({
+        name: 'Central Shop',
+        channelType: 'VIBER',
+        channelName: 'CentralShop',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('updates a shop after confirming it exists', async () => {

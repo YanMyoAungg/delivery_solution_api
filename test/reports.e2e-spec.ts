@@ -138,7 +138,11 @@ describe('Phase D reports and dashboards (e2e)', () => {
     ]).returning({ id: users.id, email: users.email });
     createdUserIds.push(admin.id, officer.id, shopUser.id);
 
-    const [shop] = await database.db.insert(shops).values({ name: '@x' }).returning({ id: shops.id });
+    const [shop] = await database.db.insert(shops).values({
+      name: '@x',
+      channelType: 'TELEGRAM',
+      channelName: `ReportsShop${run}`,
+    }).returning({ id: shops.id });
     shopId = shop.id;
     await database.db.update(users).set({ shopId }).where(eq(users.id, shopUser.id));
     const [customer] = await database.db.insert(customers).values({

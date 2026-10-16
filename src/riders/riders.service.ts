@@ -15,7 +15,9 @@ import { ListRidersQueryDto } from './dto/list-riders-query.dto.js';
 import { RiderListResponseDto } from './dto/rider-list-response.dto.js';
 import { RiderResponseDto } from './dto/rider-response.dto.js';
 import { UpdateRiderDto } from './dto/update-rider.dto.js';
+import { AssignableRiderResponseDto } from './dto/assignable-rider-response.dto.js';
 import { riders } from './rider.schema.js';
+import type { RiderVehicleType } from './rider.schema.js';
 import { PermissionService } from '../permissions/permissions.service.js';
 import { assertCanOverrideCommission } from '../ways/way-rules.util.js';
 
@@ -27,6 +29,12 @@ type RiderJoinedRow = {
   phone: string | null;
   status: 'ACTIVE' | 'INACTIVE';
   commissionPerWayOverride: string | null;
+  vehicleType: RiderVehicleType;
+  vehiclePlate: string | null;
+  licenseNo: string | null;
+  nrcNumber: string | null;
+  emergencyContactPhone: string | null;
+  notes: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -40,6 +48,12 @@ function toRiderResponse(row: RiderJoinedRow): RiderResponseDto {
     phone: row.phone,
     status: row.status,
     commissionPerWayOverride: row.commissionPerWayOverride,
+    vehicleType: row.vehicleType,
+    vehiclePlate: row.vehiclePlate,
+    licenseNo: row.licenseNo,
+    nrcNumber: row.nrcNumber,
+    emergencyContactPhone: row.emergencyContactPhone,
+    notes: row.notes,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -80,6 +94,12 @@ export class RidersService {
           phone: users.phone,
           status: users.status,
           commissionPerWayOverride: riders.commissionPerWayOverride,
+          vehicleType: riders.vehicleType,
+          vehiclePlate: riders.vehiclePlate,
+          licenseNo: riders.licenseNo,
+          nrcNumber: riders.nrcNumber,
+          emergencyContactPhone: riders.emergencyContactPhone,
+          notes: riders.notes,
           createdAt: riders.createdAt,
           updatedAt: riders.updatedAt,
         })
@@ -109,6 +129,16 @@ export class RidersService {
     return toRiderResponse(await this.riderOrThrow(id));
   }
 
+  async listAssignable(): Promise<AssignableRiderResponseDto[]> {
+    return this.database.db
+      .select({ id: riders.id, name: users.name })
+      .from(riders)
+      .innerJoin(users, eq(riders.userId, users.id))
+      .innerJoin(roles, eq(users.roleId, roles.id))
+      .where(and(eq(users.status, 'ACTIVE'), eq(roles.name, 'RIDER')))
+      .orderBy(users.name);
+  }
+
   async create(dto: CreateRiderDto): Promise<RiderResponseDto> {
     const role = await this.database.db.query.roles.findFirst({
       where: eq(roles.name, 'RIDER'),
@@ -132,7 +162,15 @@ export class RidersService {
           .returning({ id: users.id });
         const [rider] = await tx
           .insert(riders)
-          .values({ userId: user.id })
+          .values({
+            userId: user.id,
+            vehicleType: dto.vehicleType ?? 'BIKE',
+            vehiclePlate: dto.vehiclePlate ?? null,
+            licenseNo: dto.licenseNo ?? null,
+            nrcNumber: dto.nrcNumber ?? null,
+            emergencyContactPhone: dto.emergencyContactPhone ?? null,
+            notes: dto.notes ?? null,
+          })
           .returning({ id: riders.id });
         return rider.id;
       });
@@ -190,6 +228,14 @@ export class RidersService {
             ...(dto.commissionPerWayOverride !== undefined && {
               commissionPerWayOverride: dto.commissionPerWayOverride,
             }),
+            ...(dto.vehicleType !== undefined && { vehicleType: dto.vehicleType }),
+            ...(dto.vehiclePlate !== undefined && { vehiclePlate: dto.vehiclePlate }),
+            ...(dto.licenseNo !== undefined && { licenseNo: dto.licenseNo }),
+            ...(dto.nrcNumber !== undefined && { nrcNumber: dto.nrcNumber }),
+            ...(dto.emergencyContactPhone !== undefined && {
+              emergencyContactPhone: dto.emergencyContactPhone,
+            }),
+            ...(dto.notes !== undefined && { notes: dto.notes }),
             updatedAt: new Date(),
           })
           .where(eq(riders.id, id));
@@ -221,6 +267,12 @@ export class RidersService {
         phone: users.phone,
         status: users.status,
         commissionPerWayOverride: riders.commissionPerWayOverride,
+        vehicleType: riders.vehicleType,
+        vehiclePlate: riders.vehiclePlate,
+        licenseNo: riders.licenseNo,
+        nrcNumber: riders.nrcNumber,
+        emergencyContactPhone: riders.emergencyContactPhone,
+        notes: riders.notes,
         createdAt: riders.createdAt,
         updatedAt: riders.updatedAt,
       })

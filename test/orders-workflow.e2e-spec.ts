@@ -96,7 +96,11 @@ describe('Phase B office order workflow (e2e)', () => {
     }).returning({ id: users.id });
     editorUserId = editorUser.id;
 
-    const [shop] = await database.db.insert(shops).values({ name: `Phase B Shop ${run}` }).returning({ id: shops.id });
+    const [shop] = await database.db.insert(shops).values({
+      name: `Phase B Shop ${run}`,
+      channelType: 'TELEGRAM',
+      channelName: `PhaseBShop${run}`,
+    }).returning({ id: shops.id });
     shopId = shop.id;
     const [customer] = await database.db.insert(customers).values({
       name: `Phase B Customer ${run}`, phone: '09123456789', address: 'Test street',

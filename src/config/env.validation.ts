@@ -28,6 +28,13 @@ export function envValidation(
     }
   }
 
+  const appTimezone = env.APP_TIMEZONE ?? 'Asia/Yangon';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: appTimezone });
+  } catch {
+    throw new Error(`Invalid APP_TIMEZONE: ${appTimezone}`);
+  }
+
   return {
     PORT: Number(env.PORT ?? 3000),
     NODE_ENV: env.NODE_ENV ?? 'development',
